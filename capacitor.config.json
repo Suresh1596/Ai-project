@@ -1,0 +1,21 @@
+{
+  "appId": "com.suresh.localmind",
+  "appName": "LocalMind AI",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "buildOptions": {
+      "releaseType": "APK"
+    }
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "Dark",
+      "backgroundColor": "#0d1117"
+    },
+    "Keyboard": {
+      "resize": "body",
+      "style": "dark"
+    }
+  }
+}

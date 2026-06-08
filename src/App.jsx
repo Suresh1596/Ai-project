@@ -1,697 +1,1317 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// ─── MOCK DATA ────────────────────────────────────────────────────────────────
-const MODELS_LIBRARY = [
-  { id: "llama3-8b-q4", name: "Llama 3.1 8B", family: "Meta Llama", params: "8B", quant: "Q4_K_M", size: "4.7 GB", speed: "18 tok/s", ctx: "128K", tags: ["general", "coding"], status: "downloaded", rating: 4.8, description: "Meta's flagship open model. Excellent general reasoning and coding." },
-  { id: "mistral-7b-q4", name: "Mistral 7B v0.3", family: "Mistral AI", params: "7B", quant: "Q4_K_M", size: "4.1 GB", speed: "21 tok/s", ctx: "32K", tags: ["general", "fast"], status: "downloaded", rating: 4.7, description: "Fast, efficient, great instruction following. Best tok/s per GB." },
-  { id: "phi3-mini-q4", name: "Phi-3 Mini", family: "Microsoft", params: "3.8B", quant: "Q4_K_M", size: "2.2 GB", speed: "34 tok/s", ctx: "128K", tags: ["fast", "mobile"], status: "downloaded", rating: 4.5, description: "Surprisingly capable tiny model. Best for low-RAM devices." },
-  { id: "gemma2-9b-q4", name: "Gemma 2 9B", family: "Google", params: "9B", quant: "Q4_K_M", size: "5.4 GB", speed: "14 tok/s", ctx: "8K", tags: ["general", "reasoning"], status: "available", rating: 4.6, description: "Google's refined open model. Strong at reasoning and analysis." },
-  { id: "qwen25-7b-q4", name: "Qwen 2.5 7B", family: "Alibaba", params: "7B", quant: "Q4_K_M", size: "4.4 GB", speed: "19 tok/s", ctx: "128K", tags: ["multilingual", "coding"], status: "available", rating: 4.6, description: "Exceptional multilingual support. Strong Tamil/Hindi language capability." },
-  { id: "deepseek-r1-7b", name: "DeepSeek R1 7B", family: "DeepSeek", params: "7B", quant: "Q4_K_M", size: "4.3 GB", speed: "16 tok/s", ctx: "64K", tags: ["reasoning", "coding"], status: "available", rating: 4.9, description: "Reasoning model with chain-of-thought. Best for complex problem solving." },
-  { id: "codellama-7b", name: "CodeLlama 7B", family: "Meta Llama", params: "7B", quant: "Q4_K_M", size: "4.0 GB", speed: "22 tok/s", ctx: "16K", tags: ["coding"], status: "available", rating: 4.4, description: "Fine-tuned for code generation. Supports Python, SQL, JS, and more." },
-  { id: "llama3-70b-q2", name: "Llama 3.1 70B", family: "Meta Llama", params: "70B", quant: "Q2_K", size: "26.1 GB", speed: "4 tok/s", ctx: "128K", tags: ["general", "large"], status: "available", rating: 4.9, description: "The big one. Near GPT-4 quality. Requires 12GB+ RAM device." },
-];
-
-const AGENTS_DATA = [
-  { id: "a1", name: "Telegram Summarizer", icon: "✈️", color: "#2196F3", status: "active", model: "Mistral 7B v0.3", trigger: "Schedule: 9 AM daily", lastRun: "2 hrs ago", runs: 47, description: "Reads your Telegram chats and sends a daily summary notification.", tools: ["http_post", "notification"] },
-  { id: "a2", name: "Code Reviewer", icon: "🔍", color: "#4CAF50", status: "idle", model: "Llama 3.1 8B", trigger: "On demand", lastRun: "Yesterday", runs: 12, description: "Reviews code snippets shared from any app. Returns quality analysis.", tools: ["clipboard_write", "notification"] },
-  { id: "a3", name: "Tamil Translator", icon: "🌐", color: "#FF9800", status: "active", model: "Qwen 2.5 7B", trigger: "Share sheet", lastRun: "1 day ago", runs: 89, description: "Instantly translates any shared text to/from Tamil.", tools: ["clipboard_write"] },
-  { id: "a4", name: "Stock Watcher", icon: "📈", color: "#9C27B0", status: "idle", model: "Phi-3 Mini", trigger: "Schedule: 3:30 PM", lastRun: "3 days ago", runs: 23, description: "Fetches MANAPPURAM, SOUTHBANK, NATCOPHARM prices and sends briefing.", tools: ["http_get", "notification"] },
-];
-
-const SAMPLE_RESPONSES = [
-  "I'm LocalMind AI running entirely on your device using llama.cpp — no data leaves your phone. How can I help you today?",
-  "Great question! Here's what I found:\n\nFor on-device inference on Android, expected speeds are:\n\n• **Phi-3 Mini (3.8B)**: ~34 tokens/sec\n• **Mistral 7B**: ~21 tokens/sec\n• **Llama 3.1 8B**: ~18 tokens/sec\n\nAll running completely offline once downloaded.",
-  "Sure! As a locally-running model, I keep your conversations private — stored only in the app's SQLite database on your device.",
-  "Great PL/SQL question! Here's the difference:\n\n**BULK COLLECT**\n- Fetches multiple rows into a collection at once\n- Reduces context switches between SQL and PL/SQL engines\n- Use LIMIT clause for large datasets\n\n**FORALL**\n- Sends DML in bulk to the SQL engine\n- Much faster than row-by-row processing\n- Combined with BULK COLLECT gives 10-100x speedup",
-  "The Thirukkural (திருக்குறள்) has 1,330 couplets across 133 chapters organized into three books:\n\n1. **Aram (அறம்)** — Virtue (38 chapters)\n2. **Porul (பொருள்)** — Wealth (70 chapters)\n3. **Inbam (இன்பம்)** — Love (25 chapters)\n\nEach kural is a masterpiece of compression — profound wisdom in just 7 words.",
-];
-
-// ─── ICONS ────────────────────────────────────────────────────────────────────
-const Icon = ({ name, size = 20, color = "currentColor" }) => {
-  const icons = {
-    chat: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
-    cpu: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>,
-    bot: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>,
-    settings: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
-    send: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
-    plus: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
-    download: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
-    search: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
-    trash: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
-    edit: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
-    check: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-    x: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
-    menu: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
-    chevron: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
-    zap: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
-    copy: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
-    refresh: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
-  };
-  return icons[name] || null;
+const COLORS = {
+  bg: "#0A0C10",
+  surface: "#0F1218",
+  surfaceAlt: "#141820",
+  border: "#1E2530",
+  borderBright: "#2A3545",
+  accent: "#00D4FF",
+  accentDim: "#0088AA",
+  accentGlow: "rgba(0,212,255,0.15)",
+  green: "#00FF88",
+  greenDim: "#00AA55",
+  amber: "#FFB700",
+  red: "#FF4466",
+  purple: "#9D4EDD",
+  text: "#E8EDF5",
+  textMuted: "#6B7A8D",
+  textDim: "#3D4A5C",
 };
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-const renderMarkdown = (text) => {
-  return text.split("\n").map((line, i) => {
-    if (line.startsWith("• ") || line.startsWith("- ")) {
-      const parts = line.slice(2).split(/\*\*(.*?)\*\*/g);
-      return <div key={i} style={{ display: "flex", gap: 8, marginTop: 4 }}><span style={{ color: "#10a37f", fontWeight: 700 }}>•</span><span>{parts.map((p, j) => j % 2 === 1 ? <strong key={j} style={{ color: "#e2e8f0" }}>{p}</strong> : p)}</span></div>;
-    }
-    if (line.trim() === "") return <div key={i} style={{ height: 6 }} />;
-    const parts = line.split(/\*\*(.*?)\*\*/g);
-    return <div key={i} style={{ lineHeight: 1.7 }}>{parts.map((p, j) => j % 2 === 1 ? <strong key={j} style={{ color: "#e2e8f0" }}>{p}</strong> : p)}</div>;
-  });
+const style = (obj) => obj;
+
+// ─── DATA ───────────────────────────────────────────────────────────────────
+
+const INITIAL_MESSAGES = [
+  {
+    id: 1,
+    role: "assistant",
+    content: "Personal AI OS online. I'm routing through Claude via OpenRouter. Memory engine active. How can I help, Suresh?",
+    model: "claude-3-haiku",
+    ts: "09:41",
+    memory: false,
+  },
+];
+
+const MEMORIES = [
+  { id: 1, type: "semantic", icon: "⚡", text: "Snowflake + dbt Data Engineer at TCS Chennai", confidence: 0.98, age: "3d" },
+  { id: 2, type: "episodic", icon: "📅", text: "Completed Snowflake interview prep session on streams & tasks", confidence: 0.95, age: "1d" },
+  { id: 3, type: "semantic", icon: "🎯", text: "Actively job hunting for Snowflake/dbt roles on Naukri", confidence: 0.97, age: "2d" },
+  { id: 4, type: "procedural", icon: "🔄", text: "Interview prep workflow: notes → questions → evaluate → report", confidence: 0.91, age: "5d" },
+  { id: 5, type: "semantic", icon: "🍓", text: "Raspberry Pi Zero 2W running DietPi aarch64 for AI agent", confidence: 0.99, age: "7d" },
+  { id: 6, type: "episodic", icon: "🦀", text: "Built Tommy-v4 in Rust: Telegram bot with multi-provider LLM fallback", confidence: 0.96, age: "14d" },
+  { id: 7, type: "semantic", icon: "📈", text: "Tracks Manappuram Finance, South Indian Bank, Natco Pharma (NSE)", confidence: 0.88, age: "10d" },
+  { id: 8, type: "semantic", icon: "📚", text: "Interested in Tamil literature — Thirukkural", confidence: 0.92, age: "21d" },
+];
+
+const AGENTS = [
+  { id: "chat", name: "Chat Agent", icon: "💬", status: "active", desc: "General conversations & Q&A", tasks: 12, model: "claude-haiku" },
+  { id: "research", name: "Research Agent", icon: "🔍", status: "active", desc: "Web search, doc analysis, summaries", tasks: 4, model: "claude-sonnet" },
+  { id: "coding", name: "Coding Agent", icon: "💻", status: "idle", desc: "Code gen, debug, review", tasks: 0, model: "gpt-4o" },
+  { id: "database", name: "Database Agent", icon: "🗄️", status: "active", desc: "Snowflake, SQL, dbt, data engineering", tasks: 7, model: "claude-haiku" },
+  { id: "memory", name: "Memory Agent", icon: "🧠", status: "active", desc: "Memory mgmt, context retrieval, fact extraction", tasks: 31, model: "local" },
+  { id: "automation", name: "Automation Agent", icon: "⚙️", status: "idle", desc: "Tasks, schedules, device actions", tasks: 0, model: "local" },
+];
+
+const DEVICES = [
+  { id: "android", name: "Pixel 7a", icon: "📱", type: "Android", status: "online", role: "Primary Client", cpu: 34, ram: 58, sync: "live" },
+  { id: "pi", name: "Pi Zero 2W", icon: "🍓", type: "Raspberry Pi", status: "online", role: "Sync + Cache + Bot", cpu: 67, ram: 71, sync: "live" },
+  { id: "laptop", name: "ThinkPad", icon: "💻", type: "Windows 11", status: "online", role: "GPU Inference", cpu: 22, ram: 44, sync: "2m ago" },
+  { id: "server", name: "VPS", icon: "🖥️", type: "Linux / FastAPI", status: "online", role: "Backend + ChromaDB", cpu: 18, ram: 39, sync: "live" },
+];
+
+const TASKS = [
+  { id: 1, title: "Naukri profile optimization", agent: "Research", status: "done", priority: "high", created: "Today" },
+  { id: 2, title: "SnowPro Core cert study plan", agent: "Database", status: "active", priority: "high", created: "Today" },
+  { id: 3, title: "ZeroClaw SmolLM2-360M integration", agent: "Coding", status: "pending", priority: "medium", created: "Yesterday" },
+  { id: 4, title: "Stock alerts: MANAPPURAM < ₹180", agent: "Automation", status: "active", priority: "medium", created: "3d ago" },
+  { id: 5, title: "Resume dbt skills reframe", agent: "Research", status: "done", priority: "high", created: "4d ago" },
+  { id: 6, title: "Thirukkural daily quote scheduler", agent: "Automation", status: "active", priority: "low", created: "7d ago" },
+];
+
+const MODELS = [
+  { id: "claude-haiku", name: "Claude Haiku", provider: "Anthropic", type: "cloud", status: "active", latency: "~800ms", cost: "$$" },
+  { id: "claude-sonnet", name: "Claude Sonnet", provider: "Anthropic", type: "cloud", status: "active", latency: "~1.5s", cost: "$$$" },
+  { id: "gpt-4o", name: "GPT-4o", provider: "OpenAI", type: "cloud", status: "active", latency: "~1.2s", cost: "$$$" },
+  { id: "gemma-2b", name: "Gemma 2B Q4", provider: "Local / llama.cpp", type: "local", status: "running", latency: "~2s", cost: "free", size: "1.5GB" },
+  { id: "smollm2", name: "SmolLM2-360M", provider: "Local / Pi Zero", type: "local", status: "idle", latency: "~5s", cost: "free", size: "220MB" },
+  { id: "phi3-mini", name: "Phi-3 Mini Q4", provider: "Local / Ollama", type: "local", status: "idle", latency: "~3s", cost: "free", size: "2.2GB" },
+];
+
+// ─── COMPONENTS ──────────────────────────────────────────────────────────────
+
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: ${COLORS.bg};
+    color: ${COLORS.text};
+    font-family: 'Syne', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: ${COLORS.borderBright}; border-radius: 2px; }
+
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 6px ${COLORS.accentGlow}; }
+    50% { box-shadow: 0 0 18px rgba(0,212,255,0.35); }
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  @keyframes scan {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100vh); }
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes ripple {
+    0% { transform: scale(0.8); opacity: 1; }
+    100% { transform: scale(2.5); opacity: 0; }
+  }
+
+  .fade-in { animation: fadeInUp 0.3s ease forwards; }
+
+  input, textarea {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+
+  button { cursor: pointer; font-family: 'Syne', sans-serif; }
+`;
+
+// ─── StatusDot ───
+const StatusDot = ({ status }) => {
+  const colors = { active: COLORS.green, online: COLORS.green, running: COLORS.accent, idle: COLORS.amber, done: COLORS.textMuted, pending: COLORS.amber, offline: COLORS.red };
+  const c = colors[status] || COLORS.textMuted;
+  return (
+    <span style={{
+      display: "inline-block", width: 7, height: 7, borderRadius: "50%",
+      background: c, boxShadow: `0 0 6px ${c}`,
+      animation: (status === "active" || status === "online" || status === "running") ? "pulse-glow 2s infinite" : "none",
+      flexShrink: 0,
+    }} />
+  );
 };
 
-const TypingIndicator = () => (
-  <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "4px 0" }}>
-    {[0, 1, 2].map(i => (
-      <div key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: "#10a37f", animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-    ))}
-    <style>{`@keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:0.4}30%{transform:translateY(-7px);opacity:1}}`}</style>
+// ─── MiniBar ───
+const MiniBar = ({ val, color = COLORS.accent }) => (
+  <div style={{ height: 4, background: COLORS.border, borderRadius: 2, overflow: "hidden", width: "100%" }}>
+    <div style={{ height: "100%", width: `${val}%`, background: color, borderRadius: 2, transition: "width 0.5s ease" }} />
   </div>
 );
 
-const StreamingText = ({ text, onDone }) => {
-  const [displayed, setDisplayed] = useState("");
-  const [done, setDone] = useState(false);
-  useEffect(() => {
-    setDisplayed(""); setDone(false);
-    let i = 0;
-    const speed = Math.max(6, Math.min(20, Math.floor(2500 / text.length)));
-    const iv = setInterval(() => {
-      if (i < text.length) { setDisplayed(text.slice(0, ++i)); }
-      else { clearInterval(iv); setDone(true); onDone?.(); }
-    }, speed);
-    return () => clearInterval(iv);
-  }, [text]);
-  return <div>{done ? renderMarkdown(text) : <span style={{ whiteSpace: "pre-wrap" }}>{displayed}<span style={{ animation: "blink 1s step-end infinite" }}>▋</span></span>}<style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`}</style></div>;
-};
+// ─── Tag ───
+const Tag = ({ children, color = COLORS.accent }) => (
+  <span style={{
+    fontSize: 10, fontFamily: "JetBrains Mono", fontWeight: 500,
+    color, border: `1px solid ${color}33`, background: `${color}11`,
+    padding: "2px 6px", borderRadius: 3, letterSpacing: "0.05em",
+    whiteSpace: "nowrap",
+  }}>{children}</span>
+);
 
-const DownloadProgress = ({ model, onComplete }) => {
-  const [progress, setProgress] = useState(0);
-  useEffect(() => {
-    const iv = setInterval(() => setProgress(p => { if (p >= 100) { clearInterval(iv); onComplete(); return 100; } return Math.min(100, p + Math.random() * 3.5); }), 100);
-    return () => clearInterval(iv);
-  }, []);
-  const pct = Math.min(100, Math.round(progress));
-  return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginBottom: 5 }}>
-        <span>Downloading…</span><span>{pct}%</span>
-      </div>
-      <div style={{ height: 4, background: "#1e293b", borderRadius: 4, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg,#10a37f,#0ea5e9)", transition: "width 0.1s" }} />
-      </div>
-      <div style={{ fontSize: 10, color: "#64748b", marginTop: 3 }}>{((pct / 100) * parseFloat(model.size)).toFixed(1)} GB / {model.size}</div>
+// ─── SideNav ───
+const NAV_ITEMS = [
+  { id: "chat", icon: "⬡", label: "CHAT" },
+  { id: "memory", icon: "◈", label: "MEMORY" },
+  { id: "agents", icon: "◉", label: "AGENTS" },
+  { id: "tasks", icon: "▦", label: "TASKS" },
+  { id: "devices", icon: "⬡", label: "SERVICES" },
+  { id: "models", icon: "◈", label: "MODELS" },
+];
+
+const SideNav = ({ active, onNav }) => (
+  <div style={{
+    width: 64, background: COLORS.surface, borderRight: `1px solid ${COLORS.border}`,
+    display: "flex", flexDirection: "column", alignItems: "center",
+    padding: "16px 0", gap: 4, flexShrink: 0,
+  }}>
+    {/* Logo */}
+    <div style={{
+      width: 38, height: 38, borderRadius: 10,
+      background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.purple})`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 18, marginBottom: 20,
+      boxShadow: `0 0 20px ${COLORS.accentGlow}`,
+    }}>⬡</div>
+
+    {NAV_ITEMS.map(n => (
+      <button key={n.id} onClick={() => onNav(n.id)} title={n.label} style={{
+        width: 44, height: 44, borderRadius: 10, border: "none",
+        background: active === n.id ? `${COLORS.accent}18` : "transparent",
+        color: active === n.id ? COLORS.accent : COLORS.textMuted,
+        fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center",
+        outline: active === n.id ? `1px solid ${COLORS.accent}40` : "none",
+        transition: "all 0.2s",
+        position: "relative",
+      }}>
+        {n.icon}
+        {active === n.id && (
+          <div style={{
+            position: "absolute", right: -1, top: "50%", transform: "translateY(-50%)",
+            width: 2, height: 20, background: COLORS.accent, borderRadius: 1,
+          }} />
+        )}
+      </button>
+    ))}
+
+    <div style={{ flex: 1 }} />
+    <div style={{ width: 38, height: 38, borderRadius: 10, background: COLORS.surfaceAlt, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
+      TS
     </div>
-  );
-};
+  </div>
+);
 
-const Toast = ({ message, type, onClose }) => {
-  useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, []);
-  return (
-    <div style={{ position: "fixed", bottom: 72, left: "50%", transform: "translateX(-50%)", background: type === "error" ? "#ef4444" : "#10a37f", color: "#fff", padding: "10px 20px", borderRadius: 12, fontSize: 13, fontWeight: 600, zIndex: 9999, boxShadow: "0 8px 32px rgba(0,0,0,0.5)", whiteSpace: "nowrap", animation: "toastIn 0.25s ease" }}>
-      <style>{`@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(16px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}`}</style>
-      {message}
-    </div>
-  );
-};
+// ─── CHAT VIEW ───────────────────────────────────────────────────────────────
 
-// ─── MAIN APP ─────────────────────────────────────────────────────────────────
-export default function App() {
-  const [tab, setTab] = useState("chat");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(MODELS_LIBRARY[0]);
-  const [conversations, setConversations] = useState([
-    { id: "c1", title: "Getting started", messages: [{ role: "assistant", content: "Hello Suresh! I'm LocalMind AI running Llama 3.1 8B entirely on-device. Your conversations are stored in local SQLite and never leave your phone. How can I help?", id: "m0" }] },
-    { id: "c2", title: "PL/SQL BULK COLLECT", messages: [] },
-    { id: "c3", title: "Stock analysis", messages: [] },
-  ]);
-  const [activeConvId, setActiveConvId] = useState("c1");
+const ChatView = () => {
+  const [messages, setMessages] = useState(INITIAL_MESSAGES);
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [streamingId, setStreamingId] = useState(null);
-  const [models, setModels] = useState(MODELS_LIBRARY);
-  const [agents, setAgents] = useState(AGENTS_DATA);
-  const [modelSearch, setModelSearch] = useState("");
-  const [modelFilter, setModelFilter] = useState("all");
-  const [downloading, setDownloading] = useState({});
-  const [toast, setToast] = useState(null);
-  const [showModelPicker, setShowModelPicker] = useState(false);
-  const [showWizard, setShowWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState(0);
-  const [newAgent, setNewAgent] = useState({ name: "", description: "", icon: "🤖", model: "llama3-8b-q4", trigger: "on-demand", tools: [] });
-  const [testResults, setTestResults] = useState({});
-  const chatEndRef = useRef(null);
-  const inputRef = useRef(null);
-  const activeConv = conversations.find(c => c.id === activeConvId);
-  const downloaded = models.filter(m => m.status === "downloaded");
+  const [loading, setLoading] = useState(false);
+  const [model, setModel] = useState("claude-haiku");
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
+  const bottomRef = useRef(null);
+  const conversationRef = useRef([...INITIAL_MESSAGES]);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeConv?.messages, isTyping]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  const showToast = (msg, type = "success") => setToast({ msg, type });
+  const SYSTEM_PROMPT = `You are Personal AI OS — a private, cross-platform AI assistant built for Suresh Kumar T (also known as "ts"), a Snowflake + dbt Data Engineer at TCS Chennai with ~6 years IT experience. 
 
-  const sendMessage = useCallback(() => {
-    if (!input.trim() || isTyping) return;
-    const userMsg = { role: "user", content: input.trim(), id: `u${Date.now()}` };
-    const botId = `b${Date.now()}`;
+Key context about Suresh:
+- Works on ASOS and Croma client projects using Snowflake, dbt, Airflow
+- Actively job hunting for Snowflake/dbt Data Engineer roles
+- Runs a Raspberry Pi Zero 2W with DietPi for AI agents (project: ZeroClaw/Tommy-v4 in Rust)
+- Tracks NSE stocks: Manappuram Finance, South Indian Bank, Natco Pharma
+- Interested in Tamil literature (Thirukkural) and IEMs
+- Prefers concise, direct, actionable responses
+
+You are the chat interface of his Personal AI OS. Be helpful, concise, and personal. Reference his context naturally when relevant. You route simple chats to local models, coding to GPT, research to Claude. Memory engine is ${memoryEnabled ? "ACTIVE" : "DISABLED"}.
+
+Keep responses reasonably short (2-4 sentences for conversational messages, longer for technical). This is a mobile-friendly chat interface.`;
+
+  const sendMessage = useCallback(async () => {
+    if (!input.trim() || loading) return;
+    const userMsg = { id: Date.now(), role: "user", content: input.trim(), ts: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    conversationRef.current = newMessages;
     setInput("");
-    setIsTyping(true);
-    setConversations(prev => prev.map(c => c.id === activeConvId
-      ? { ...c, title: c.messages.length <= 1 ? input.trim().slice(0, 28) + "…" : c.title, messages: [...c.messages, userMsg] } : c));
-    setTimeout(() => {
-      const resp = SAMPLE_RESPONSES[Math.floor(Math.random() * SAMPLE_RESPONSES.length)];
-      setIsTyping(false);
-      setStreamingId(botId);
-      setConversations(prev => prev.map(c => c.id === activeConvId ? { ...c, messages: [...c.messages, { role: "assistant", content: resp, id: botId, streaming: true }] } : c));
-    }, 700 + Math.random() * 900);
-  }, [input, isTyping, activeConvId]);
+    setLoading(true);
 
-  const newChat = () => {
-    const id = `c${Date.now()}`;
-    setConversations(prev => [...prev, { id, title: "New chat", messages: [{ role: "assistant", content: `Hi! Running **${selectedModel.name}** on-device. What can I help with?`, id: `m${Date.now()}` }] }]);
-    setActiveConvId(id);
-    setSidebarOpen(false);
-  };
+    try {
+      const apiMessages = conversationRef.current.map(m => ({ role: m.role, content: m.content }));
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: SYSTEM_PROMPT,
+          messages: apiMessages,
+        }),
+      });
+      const data = await response.json();
+      const text = data.content?.find(b => b.type === "text")?.text || "Error: no response";
+      const assistantMsg = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content: text,
+        model,
+        ts: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+        memory: memoryEnabled,
+      };
+      const updated = [...newMessages, assistantMsg];
+      setMessages(updated);
+      conversationRef.current = updated;
+    } catch (e) {
+      const errMsg = {
+        id: Date.now() + 1, role: "assistant",
+        content: `⚠️ API error: ${e.message}. Check your Anthropic connection.`,
+        model, ts: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }), memory: false,
+      };
+      setMessages(prev => [...prev, errMsg]);
+    }
+    setLoading(false);
+  }, [input, loading, messages, model, memoryEnabled]);
 
-  const filteredModels = models.filter(m => {
-    const q = modelSearch.toLowerCase();
-    const matchSearch = !q || m.name.toLowerCase().includes(q) || m.family.toLowerCase().includes(q) || m.tags.some(t => t.includes(q));
-    const matchFilter = modelFilter === "all" || (modelFilter === "downloaded" && m.status === "downloaded") || (modelFilter === "available" && m.status === "available") || m.tags.includes(modelFilter);
-    return matchSearch && matchFilter;
-  });
+  const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
 
-  const c = {
-    bg: "#0d1117", surface: "#161b22", card: "#1c2128", border: "#21262d",
-    border2: "#30363d", text: "#c9d1d9", textDim: "#6e7681", textMid: "#8b949e",
-    textBright: "#e6edf3", green: "#10a37f", blue: "#0ea5e9", accent: "linear-gradient(135deg,#10a37f,#0ea5e9)",
-    purple: "linear-gradient(135deg,#667eea,#764ba2)"
-  };
+  const QUICK = ["SnowPro study plan", "Thirukkural verse", "My Pi Zero status", "Job hunt tips"];
 
-  const WIZARD_STEPS = ["Basic Info", "Model", "Prompt", "Tools", "Trigger", "Review"];
-
-  // ─── SCREENS ────────────────────────────────────────────────────────────────
-
-  const ChatScreen = () => (
-    <>
-      {/* Sidebar overlay */}
-      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 99 }} />}
-      {/* Sidebar */}
-      <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "76%", background: c.surface, zIndex: 100, transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)", borderRight: `1px solid ${c.border}`, display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "16px", borderBottom: `1px solid ${c.border}` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ fontWeight: 700, fontSize: 16 }}>LocalMind AI</span>
-            <button onClick={() => setSidebarOpen(false)} style={{ background: "none", border: "none", color: c.textDim, cursor: "pointer" }}><Icon name="x" size={18} /></button>
-          </div>
-          <button onClick={newChat} style={{ width: "100%", background: c.accent, border: "none", borderRadius: 12, padding: "10px", color: "#fff", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, justifyContent: "center", fontSize: 14 }}>
-            <Icon name="plus" size={16} /> New Chat
-          </button>
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
+      {/* Header */}
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Chat Interface</div>
+          <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono" }}>Model Router → {model}</div>
         </div>
-        <div style={{ flex: 1, overflow: "auto", padding: "8px 0" }}>
-          <div style={{ padding: "4px 16px 8px", fontSize: 10, fontWeight: 700, color: c.textDim, letterSpacing: "0.1em", textTransform: "uppercase" }}>Recent</div>
-          {conversations.map(conv => (
-            <div key={conv.id} onClick={() => { setActiveConvId(conv.id); setSidebarOpen(false); }}
-              style={{ padding: "10px 16px", cursor: "pointer", background: conv.id === activeConvId ? c.card : "transparent", borderLeft: `3px solid ${conv.id === activeConvId ? c.green : "transparent"}`, display: "flex", alignItems: "center", gap: 10, transition: "all 0.15s" }}>
-              <Icon name="chat" size={14} color={conv.id === activeConvId ? c.green : c.textDim} />
-              <span style={{ flex: 1, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: conv.id === activeConvId ? c.textBright : c.text }}>{conv.title}</span>
-              <button onClick={e => { e.stopPropagation(); setConversations(p => p.filter(x => x.id !== conv.id)); if (activeConvId === conv.id) setActiveConvId(conversations.find(x => x.id !== conv.id)?.id); }}
-                style={{ background: "none", border: "none", color: c.textDim, cursor: "pointer", padding: 2, opacity: 0 }}
-                onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0}>
-                <Icon name="trash" size={12} />
-              </button>
+        <div style={{ flex: 1 }} />
+        {/* Controls */}
+        <button onClick={() => setMemoryEnabled(m => !m)} style={{
+          fontSize: 11, fontFamily: "JetBrains Mono", color: memoryEnabled ? COLORS.green : COLORS.textMuted,
+          background: memoryEnabled ? `${COLORS.green}12` : COLORS.surfaceAlt,
+          border: `1px solid ${memoryEnabled ? COLORS.green + "40" : COLORS.border}`,
+          borderRadius: 6, padding: "4px 10px", display: "flex", alignItems: "center", gap: 5,
+        }}>
+          <StatusDot status={memoryEnabled ? "active" : "idle"} /> MEM
+        </button>
+        <select value={model} onChange={e => setModel(e.target.value)} style={{
+          background: COLORS.surfaceAlt, color: COLORS.text, border: `1px solid ${COLORS.border}`,
+          borderRadius: 6, padding: "4px 8px", fontSize: 11, fontFamily: "JetBrains Mono",
+        }}>
+          <option value="claude-haiku">claude-haiku</option>
+          <option value="claude-sonnet">claude-sonnet</option>
+          <option value="gpt-4o">gpt-4o</option>
+          <option value="gemma-2b">gemma-2b [local]</option>
+        </select>
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {messages.map((msg) => (
+          <div key={msg.id} className="fade-in" style={{
+            display: "flex", flexDirection: "column",
+            alignItems: msg.role === "user" ? "flex-end" : "flex-start",
+          }}>
+            <div style={{
+              maxWidth: "78%",
+              background: msg.role === "user" ? `linear-gradient(135deg, ${COLORS.accent}22, ${COLORS.purple}22)` : COLORS.surfaceAlt,
+              border: `1px solid ${msg.role === "user" ? COLORS.accent + "30" : COLORS.border}`,
+              borderRadius: msg.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+              padding: "10px 14px",
+              fontSize: 13.5, lineHeight: 1.6,
+            }}>
+              {msg.content}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, fontSize: 10, color: COLORS.textDim, fontFamily: "JetBrains Mono" }}>
+              {msg.role === "assistant" && <><span style={{ color: COLORS.accentDim }}>{msg.model}</span> · </>}
+              {msg.ts}
+              {msg.memory && <><span>·</span><span style={{ color: COLORS.green }}>⧫ mem</span></>}
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
+            <div style={{
+              background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+              borderRadius: "16px 16px 16px 4px", padding: "12px 16px",
+              display: "flex", gap: 5, alignItems: "center",
+            }}>
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{
+                  width: 6, height: 6, borderRadius: "50%", background: COLORS.accent,
+                  animation: `blink 1.2s ${i * 0.2}s infinite`,
+                }} />
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Quick Prompts */}
+      {messages.length < 3 && (
+        <div style={{ padding: "0 20px 10px", display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {QUICK.map(q => (
+            <button key={q} onClick={() => setInput(q)} style={{
+              fontSize: 11, fontFamily: "JetBrains Mono", color: COLORS.textMuted,
+              background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+              borderRadius: 8, padding: "5px 10px",
+            }}>{q}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{ padding: "12px 20px", borderTop: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+        <div style={{
+          display: "flex", gap: 8, background: COLORS.surfaceAlt,
+          border: `1px solid ${COLORS.borderBright}`, borderRadius: 12,
+          padding: "8px 12px", alignItems: "flex-end",
+        }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Message... (Enter to send)"
+            rows={1}
+            style={{
+              flex: 1, background: "transparent", border: "none", outline: "none",
+              color: COLORS.text, resize: "none", fontSize: 13, lineHeight: 1.5,
+              maxHeight: 100, overflowY: "auto",
+            }}
+          />
+          <button onClick={sendMessage} disabled={!input.trim() || loading} style={{
+            width: 32, height: 32, borderRadius: 8, border: "none",
+            background: input.trim() && !loading ? COLORS.accent : COLORS.border,
+            color: input.trim() && !loading ? COLORS.bg : COLORS.textMuted,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 14, flexShrink: 0, transition: "all 0.2s",
+          }}>→</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── MEMORY VIEW ─────────────────────────────────────────────────────────────
+
+const MemoryView = () => {
+  const [filter, setFilter] = useState("all");
+  const types = ["all", "semantic", "episodic", "procedural"];
+  const filtered = filter === "all" ? MEMORIES : MEMORIES.filter(m => m.type === filter);
+
+  const typeColor = { semantic: COLORS.accent, episodic: COLORS.green, procedural: COLORS.purple };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Memory Engine</div>
+        <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono" }}>ChromaDB · {MEMORIES.length} memories · RAG active</div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, padding: "16px 20px", flexShrink: 0 }}>
+        {[
+          { label: "Semantic", count: MEMORIES.filter(m => m.type === "semantic").length, color: COLORS.accent },
+          { label: "Episodic", count: MEMORIES.filter(m => m.type === "episodic").length, color: COLORS.green },
+          { label: "Procedural", count: MEMORIES.filter(m => m.type === "procedural").length, color: COLORS.purple },
+        ].map(s => (
+          <div key={s.label} style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "12px" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.count}</div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter */}
+      <div style={{ padding: "0 20px 12px", display: "flex", gap: 6, flexShrink: 0 }}>
+        {types.map(t => (
+          <button key={t} onClick={() => setFilter(t)} style={{
+            fontSize: 11, fontFamily: "JetBrains Mono", textTransform: "uppercase",
+            color: filter === t ? COLORS.accent : COLORS.textMuted,
+            background: filter === t ? `${COLORS.accent}15` : "transparent",
+            border: `1px solid ${filter === t ? COLORS.accent + "40" : COLORS.border}`,
+            borderRadius: 6, padding: "4px 10px",
+          }}>{t}</button>
+        ))}
+      </div>
+
+      {/* Memory list */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {filtered.map(mem => (
+          <div key={mem.id} className="fade-in" style={{
+            background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+            borderRadius: 10, padding: "12px 14px",
+            borderLeft: `3px solid ${typeColor[mem.type]}`,
+            display: "flex", alignItems: "center", gap: 12,
+          }}>
+            <span style={{ fontSize: 20 }}>{mem.icon}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, lineHeight: 1.4 }}>{mem.text}</div>
+              <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
+                <Tag color={typeColor[mem.type]}>{mem.type}</Tag>
+                <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textDim }}>{mem.age} ago · {Math.round(mem.confidence * 100)}% conf</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button style={{ fontSize: 12, color: COLORS.textMuted, background: "none", border: "none", padding: 4 }}>✏</button>
+              <button style={{ fontSize: 12, color: COLORS.red, background: "none", border: "none", padding: 4 }}>✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── AGENTS VIEW ─────────────────────────────────────────────────────────────
+
+const AGENT_PROMPTS = {
+  chat: `You are the Chat Agent of Personal AI OS. You handle general conversations for Suresh Kumar T (ts), a Snowflake+dbt Data Engineer at TCS Chennai. Be concise, warm, direct.`,
+  research: `You are the Research Agent of Personal AI OS. You help Suresh (ts) research topics, summarize information, find answers. Structure your responses clearly. He is a Snowflake+dbt Data Engineer actively job hunting.`,
+  coding: `You are the Coding Agent of Personal AI OS. You help Suresh (ts) write, debug, and review code. He works with Rust, Python, SQL, dbt, Snowflake. Always give working code. Be concise.`,
+  database: `You are the Database Agent of Personal AI OS, specialized in Snowflake, dbt, SQL, and data engineering. Suresh (ts) works at TCS on ASOS and Croma projects. Give precise, production-ready SQL and dbt code. Use Snowflake syntax.`,
+  memory: `You are the Memory Agent of Personal AI OS. You help Suresh (ts) manage, recall, and organize information from his memory store. When asked to recall something, respond as if you have access to his memory database. Be precise.`,
+  automation: `You are the Automation Agent of Personal AI OS. You help Suresh (ts) plan and execute automated workflows, schedules, and system tasks. He runs a Pi Zero 2W with DietPi and a Rust Telegram bot (Tommy-v4). Give actionable steps.`,
+};
+
+const AGENT_HINTS = {
+  chat: ["What should I do this weekend?", "Explain Zero Trust architecture", "Help me think through a decision"],
+  research: ["Research SnowPro Core exam topics", "Summarize latest dbt Cloud features", "Compare Airflow vs Prefect"],
+  coding: ["Write a Rust async HTTP client", "dbt macro for surrogate key", "Snowflake MERGE INTO example"],
+  database: ["Write a Snowflake stream + task pipeline", "dbt incremental model for ASOS orders", "Optimize this slow Snowflake query"],
+  memory: ["What do you know about my Pi Zero project?", "Recall my interview prep workflow", "What stocks am I tracking?"],
+  automation: ["Schedule daily Thirukkural quote at 7am", "Script to restart Tommy bot if it crashes", "Auto-backup SQLite to Google Drive"],
+};
+
+const AgentChat = ({ agent, onBack }) => {
+  const initMsg = { id: 1, role: "assistant", content: `${agent.icon} ${agent.name} online. ${agent.desc}. What do you need?`, ts: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) };
+  const [messages, setMessages] = useState([initMsg]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+  const convRef = useRef([initMsg]);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const send = async (text) => {
+    const txt = text || input.trim();
+    if (!txt || loading) return;
+    const userMsg = { id: Date.now(), role: "user", content: txt, ts: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) };
+    const updated = [...convRef.current, userMsg];
+    setMessages(updated); convRef.current = updated;
+    setInput(""); setLoading(true);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514", max_tokens: 1000,
+          system: AGENT_PROMPTS[agent.id] || AGENT_PROMPTS.chat,
+          messages: updated.map(m => ({ role: m.role, content: m.content })),
+        }),
+      });
+      const data = await res.json();
+      const reply = data.content?.find(b => b.type === "text")?.text || "No response.";
+      const aMsg = { id: Date.now() + 1, role: "assistant", content: reply, ts: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) };
+      const final = [...updated, aMsg];
+      setMessages(final); convRef.current = final;
+    } catch (e) {
+      const err = { id: Date.now() + 1, role: "assistant", content: `⚠️ ${e.message}`, ts: "" };
+      setMessages(p => [...p, err]);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${COLORS.border}`, display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: COLORS.textMuted, fontSize: 18, padding: "0 4px" }}>←</button>
+        <span style={{ fontSize: 20 }}>{agent.icon}</span>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{agent.name}</div>
+          <div style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textMuted }}>{agent.model}</div>
+        </div>
+        <div style={{ flex: 1 }} />
+        <StatusDot status="active" />
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {messages.map(msg => (
+          <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start" }}>
+            <div style={{
+              maxWidth: "80%",
+              background: msg.role === "user" ? `linear-gradient(135deg, ${COLORS.accent}22, ${COLORS.purple}22)` : COLORS.surfaceAlt,
+              border: `1px solid ${msg.role === "user" ? COLORS.accent + "30" : COLORS.border}`,
+              borderRadius: msg.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+              padding: "10px 13px", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap",
+            }}>{msg.content}</div>
+            {msg.ts && <div style={{ fontSize: 10, color: COLORS.textDim, fontFamily: "JetBrains Mono", marginTop: 3 }}>{msg.ts}</div>}
+          </div>
+        ))}
+        {loading && (
+          <div style={{ display: "flex" }}>
+            <div style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: "14px 14px 14px 4px", padding: "12px 16px", display: "flex", gap: 5 }}>
+              {[0,1,2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.accent, animation: `blink 1.2s ${i*0.2}s infinite` }} />)}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Hints */}
+      {messages.length < 3 && (
+        <div style={{ padding: "0 20px 8px", display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {(AGENT_HINTS[agent.id] || []).map(h => (
+            <button key={h} onClick={() => send(h)} style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: COLORS.textMuted, background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "5px 9px" }}>{h}</button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ padding: "10px 20px", borderTop: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 8, background: COLORS.surfaceAlt, border: `1px solid ${COLORS.borderBright}`, borderRadius: 10, padding: "7px 10px" }}>
+          <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
+            placeholder={`Ask ${agent.name}…`}
+            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: COLORS.text, fontSize: 13 }} />
+          <button onClick={() => send()} disabled={!input.trim() || loading} style={{
+            width: 30, height: 30, borderRadius: 7, border: "none",
+            background: input.trim() && !loading ? COLORS.accent : COLORS.border,
+            color: input.trim() && !loading ? COLORS.bg : COLORS.textMuted, fontSize: 13, flexShrink: 0,
+          }}>→</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AgentsView = () => {
+  const [activeAgent, setActiveAgent] = useState(null);
+
+  if (activeAgent) return <AgentChat agent={activeAgent} onBack={() => setActiveAgent(null)} />;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Agent Framework</div>
+        <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono" }}>
+          {AGENTS.filter(a => a.status === "active").length} active · tap to chat
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {AGENTS.map(agent => (
+          <div key={agent.id} style={{
+            background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+            borderRadius: 12, padding: "14px 16px", cursor: "pointer", transition: "all 0.15s",
+          }}
+            onClick={() => setActiveAgent(agent)}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{
+                width: 42, height: 42, borderRadius: 10, fontSize: 20,
+                background: agent.status === "active" ? `${COLORS.accent}18` : COLORS.border,
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}>{agent.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>{agent.name}</span>
+                  <StatusDot status={agent.status} />
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{agent.desc}</div>
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <Tag color={COLORS.accent}>{agent.model}</Tag>
+                </div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.accent }}>{agent.tasks}</div>
+                <div style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: "JetBrains Mono" }}>tasks</div>
+                <div style={{ fontSize: 16, color: COLORS.textDim, marginTop: 4 }}>→</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── TASKS VIEW ──────────────────────────────────────────────────────────────
+
+const TasksView = () => {
+  const [tasks, setTasks] = useState(TASKS);
+  const [newTask, setNewTask] = useState("");
+
+  const toggle = (id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, status: t.status === "done" ? "pending" : "done" } : t));
+
+  const statusColor = { done: COLORS.green, active: COLORS.accent, pending: COLORS.amber };
+  const priorityColor = { high: COLORS.red, medium: COLORS.amber, low: COLORS.textMuted };
+
+  const addTask = () => {
+    if (!newTask.trim()) return;
+    setTasks(prev => [...prev, { id: Date.now(), title: newTask.trim(), agent: "Chat", status: "pending", priority: "medium", created: "Now" }]);
+    setNewTask("");
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Task Tracker</div>
+        <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono" }}>
+          {tasks.filter(t => t.status === "done").length}/{tasks.length} complete
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ padding: "12px 20px 0", flexShrink: 0 }}>
+        <MiniBar val={Math.round((tasks.filter(t => t.status === "done").length / tasks.length) * 100)} color={COLORS.green} />
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {tasks.map(task => (
+          <div key={task.id} className="fade-in" style={{
+            background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+            borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12,
+            opacity: task.status === "done" ? 0.6 : 1, transition: "opacity 0.2s",
+          }}>
+            <button onClick={() => toggle(task.id)} style={{
+              width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+              border: `2px solid ${task.status === "done" ? COLORS.green : COLORS.borderBright}`,
+              background: task.status === "done" ? COLORS.green : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 10, color: COLORS.bg,
+            }}>{task.status === "done" ? "✓" : ""}</button>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, textDecoration: task.status === "done" ? "line-through" : "none", color: task.status === "done" ? COLORS.textMuted : COLORS.text }}>
+                {task.title}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 5, alignItems: "center" }}>
+                <Tag color={statusColor[task.status]}>{task.status}</Tag>
+                <Tag color={priorityColor[task.priority]}>{task.priority}</Tag>
+                <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textDim }}>{task.agent} · {task.created}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Add task */}
+      <div style={{ padding: "12px 20px", borderTop: `1px solid ${COLORS.border}`, display: "flex", gap: 8, flexShrink: 0 }}>
+        <input value={newTask} onChange={e => setNewTask(e.target.value)} onKeyDown={e => e.key === "Enter" && addTask()}
+          placeholder="New task... (Enter to add)"
+          style={{
+            flex: 1, background: COLORS.surfaceAlt, border: `1px solid ${COLORS.borderBright}`,
+            borderRadius: 8, padding: "8px 12px", color: COLORS.text, outline: "none", fontSize: 13,
+          }} />
+        <button onClick={addTask} style={{
+          background: COLORS.accent, color: COLORS.bg, border: "none", borderRadius: 8,
+          padding: "8px 16px", fontWeight: 700, fontSize: 13,
+        }}>+</button>
+      </div>
+    </div>
+  );
+};
+
+// ─── SERVICE MESH VIEW ───────────────────────────────────────────────────────
+
+const SERVICES = [
+  {
+    id: "gcal", name: "Google Calendar", icon: "📅", color: "#4285F4",
+    status: "connected", desc: "Schedule meetings, reminders, events",
+    actions: ["Create event", "Check availability", "List today"],
+    examples: ["Schedule a meet with Ravi tomorrow 3pm", "What's on my calendar today?", "Block 2 hours for SnowPro study"],
+  },
+  {
+    id: "gmail", name: "Gmail", icon: "✉️", color: "#EA4335",
+    status: "connected", desc: "Read, send, search emails",
+    actions: ["Send email", "Read inbox", "Search"],
+    examples: ["Send interview follow-up to HR", "Any recruiter mails today?", "Draft apology mail to manager"],
+  },
+  {
+    id: "alarm", name: "Alarms & Reminders", icon: "⏰", color: COLORS.amber,
+    status: "connected", desc: "Set alarms, recurring reminders, countdowns",
+    actions: ["Set alarm", "Recurring reminder", "Countdown"],
+    examples: ["Remind me to take meds at 9pm", "Wake me at 6:30 tomorrow", "Daily standup reminder at 9:45am"],
+  },
+  {
+    id: "telegram", name: "Telegram (Tommy Bot)", icon: "🤖", color: "#229ED9",
+    status: "connected", desc: "Send messages via @Dt96_bot on Pi Zero",
+    actions: ["Send message", "Stock alert", "Thirukkural"],
+    examples: ["Send Thirukkural quote to Tommy", "Alert me when MANAPPURAM < ₹180", "Message myself: buy groceries"],
+  },
+  {
+    id: "drive", name: "Google Drive", icon: "📁", color: COLORS.green,
+    status: "connected", desc: "Search, upload, read documents",
+    actions: ["Upload doc", "Search files", "Read file"],
+    examples: ["Upload my resume to Drive", "Find my Snowflake notes", "Read the latest dbt cheatsheet"],
+  },
+  {
+    id: "nse", name: "NSE Stock Feed", icon: "📈", color: "#FF6B00",
+    status: "connected", desc: "Live prices, alerts, portfolio tracking",
+    actions: ["Get price", "Set alert", "Portfolio summary"],
+    examples: ["MANAPPURAM current price?", "Alert when South Indian Bank > ₹32", "My portfolio today"],
+  },
+  {
+    id: "notion", name: "Notion", icon: "📓", color: COLORS.textMuted,
+    status: "disconnected", desc: "Notes, databases, pages",
+    actions: ["Create page", "Search notes", "Append block"],
+    examples: [],
+  },
+  {
+    id: "github", name: "GitHub", icon: "🐙", color: COLORS.purple,
+    status: "disconnected", desc: "Repos, issues, commits — ZeroClaw, Tommy-v4",
+    actions: ["Open issue", "Check PR", "Commit summary"],
+    examples: [],
+  },
+];
+
+const NL_LOG = [
+  { id: 1, input: "Schedule a meet with Ravi tomorrow 3pm", service: "Google Calendar", action: "Created: Meet with Ravi · Jun 8, 3:00 PM", status: "done", ts: "10:12" },
+  { id: 2, input: "Remind me to take meds at 9pm daily", service: "Alarms", action: "Recurring alarm set · 9:00 PM daily", status: "done", ts: "09:45" },
+  { id: 3, input: "Any recruiter mails today?", service: "Gmail", action: "Found 2 recruiter emails · showing preview", status: "done", ts: "09:30" },
+  { id: 4, input: "MANAPPURAM current price?", service: "NSE Feed", action: "₹176.40 · ↓ 1.2% today", status: "done", ts: "09:10" },
+];
+
+const ServiceMeshView = () => {
+  const [tab, setTab] = useState("services"); // services | nl | devices
+  const [nlInput, setNlInput] = useState("");
+  const [nlLog, setNlLog] = useState(NL_LOG);
+  const [nlLoading, setNlLoading] = useState(false);
+  const [expanded, setExpanded] = useState(null);
+
+  const connectedCount = SERVICES.filter(s => s.status === "connected").length;
+
+  const runNL = async () => {
+    if (!nlInput.trim() || nlLoading) return;
+    const userInput = nlInput.trim();
+    setNlInput("");
+    setNlLoading(true);
+
+    // Detect which service to route to
+    const pending = {
+      id: Date.now(), input: userInput, service: "Routing…",
+      action: "Analyzing intent…", status: "active", ts: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+    };
+    setNlLog(prev => [pending, ...prev]);
+
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: `You are the Service Mesh router for Personal AI OS. The user gives a natural language command. You must:
+1. Identify which service handles it: Google Calendar, Gmail, Alarms & Reminders, Telegram (Tommy Bot), Google Drive, NSE Stock Feed
+2. Describe exactly what action would be taken (as if it was executed)
+3. Be concise and specific — e.g. "Created event: Team sync · June 9, 2:00 PM – 3:00 PM"
+
+Respond ONLY in this JSON format (no markdown, no preamble):
+{"service": "Google Calendar", "action": "Created event: Meet with Ravi · June 8, 3:00 PM – 4:00 PM", "status": "done"}
+
+Services available: Google Calendar, Gmail, Alarms & Reminders, Telegram (Tommy Bot), Google Drive, NSE Stock Feed
+If nothing matches: {"service": "Chat Agent", "action": "<helpful response>", "status": "done"}`,
+          messages: [{ role: "user", content: userInput }],
+        }),
+      });
+      const data = await res.json();
+      const raw = data.content?.find(b => b.type === "text")?.text || "{}";
+      let parsed;
+      try { parsed = JSON.parse(raw.replace(/```json|```/g, "").trim()); }
+      catch { parsed = { service: "Chat Agent", action: raw, status: "done" }; }
+
+      setNlLog(prev => prev.map(l =>
+        l.id === pending.id ? { ...l, service: parsed.service, action: parsed.action, status: parsed.status || "done" } : l
+      ));
+    } catch (e) {
+      setNlLog(prev => prev.map(l =>
+        l.id === pending.id ? { ...l, service: "Error", action: e.message, status: "error" } : l
+      ));
+    }
+    setNlLoading(false);
+  };
+
+  const statusColor = { done: COLORS.green, active: COLORS.accent, error: COLORS.red };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Service Mesh</div>
+        <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono" }}>
+          {connectedCount}/{SERVICES.length} connected · NL routing active
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+        {[["services", "Services"], ["nl", "NL Console"], ["devices", "Devices"]].map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} style={{
+            flex: 1, padding: "10px", fontSize: 12, fontWeight: 600, border: "none",
+            background: tab === id ? `${COLORS.accent}12` : "transparent",
+            color: tab === id ? COLORS.accent : COLORS.textMuted,
+            borderBottom: tab === id ? `2px solid ${COLORS.accent}` : "2px solid transparent",
+            transition: "all 0.2s",
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {/* ── SERVICES TAB ── */}
+      {tab === "services" && (
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {SERVICES.map(svc => (
+            <div key={svc.id} onClick={() => setExpanded(expanded === svc.id ? null : svc.id)} style={{
+              background: COLORS.surfaceAlt,
+              border: `1px solid ${expanded === svc.id ? svc.color + "50" : COLORS.border}`,
+              borderRadius: 12, padding: "12px 14px", cursor: "pointer",
+              borderLeft: `3px solid ${svc.status === "connected" ? svc.color : COLORS.border}`,
+              transition: "all 0.2s", opacity: svc.status === "disconnected" ? 0.55 : 1,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 22 }}>{svc.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{svc.name}</span>
+                    <StatusDot status={svc.status === "connected" ? "active" : "idle"} />
+                  </div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>{svc.desc}</div>
+                </div>
+                {svc.status === "disconnected" ? (
+                  <button style={{
+                    fontSize: 11, fontFamily: "JetBrains Mono", color: COLORS.accent,
+                    background: `${COLORS.accent}15`, border: `1px solid ${COLORS.accent}40`,
+                    borderRadius: 6, padding: "4px 10px",
+                  }}>Connect</button>
+                ) : (
+                  <Tag color={svc.color}>live</Tag>
+                )}
+              </div>
+
+              {expanded === svc.id && svc.status === "connected" && (
+                <div className="fade-in" style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${COLORS.border}` }}>
+                  <div style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textDim, marginBottom: 6, letterSpacing: "0.08em" }}>EXAMPLE COMMANDS</div>
+                  {svc.examples.map((ex, i) => (
+                    <div key={i} style={{
+                      fontSize: 12, fontFamily: "JetBrains Mono", color: COLORS.textMuted,
+                      background: COLORS.border, borderRadius: 6, padding: "6px 10px",
+                      marginBottom: 5, cursor: "default",
+                    }}>
+                      <span style={{ color: COLORS.accent }}>→ </span>{ex}
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    {svc.actions.map(a => <Tag key={a} color={svc.color}>{a}</Tag>)}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
-        <div style={{ padding: "12px 16px", borderTop: `1px solid ${c.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: "50%", background: c.purple, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14, color: "#fff" }}>S</div>
-          <div><div style={{ fontSize: 13, fontWeight: 600 }}>Suresh Kumar T</div><div style={{ fontSize: 11, color: c.textDim }}>TCS · Chennai</div></div>
-        </div>
-      </div>
+      )}
 
-      {/* Top bar */}
-      <div style={{ display: "flex", alignItems: "center", padding: "10px 14px", background: c.surface, borderBottom: `1px solid ${c.border}`, gap: 10, flexShrink: 0 }}>
-        <button onClick={() => setSidebarOpen(true)} style={{ background: "none", border: "none", color: c.textDim, cursor: "pointer", padding: 4 }}><Icon name="menu" size={20} /></button>
-        <button onClick={() => setShowModelPicker(true)} style={{ flex: 1, display: "flex", alignItems: "center", gap: 7, background: c.card, border: `1px solid ${c.border2}`, borderRadius: 20, padding: "6px 12px 6px 8px", cursor: "pointer" }}>
-          <div style={{ width: 20, height: 20, borderRadius: 6, background: c.accent, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="cpu" size={11} color="#fff" /></div>
-          <span style={{ fontSize: 12, fontWeight: 600, color: c.textBright, flex: 1, textAlign: "left" }}>{selectedModel.name}</span>
-          <span style={{ fontSize: 10, color: c.textDim }}>{selectedModel.params}</span>
-          <Icon name="chevron" size={13} color={c.textDim} />
-        </button>
-        <button onClick={newChat} style={{ background: "none", border: "none", color: c.textDim, cursor: "pointer", padding: 4 }}><Icon name="edit" size={18} /></button>
-      </div>
-
-      {/* Model picker sheet */}
-      {showModelPicker && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.8)" }} onClick={() => setShowModelPicker(false)} />
-          <div style={{ position: "relative", background: c.surface, borderRadius: "22px 22px 0 0", maxHeight: "65%", overflow: "auto", border: `1px solid ${c.border}`, borderBottom: "none", animation: "sheetUp 0.25s ease" }}>
-            <style>{`@keyframes sheetUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
-            <div style={{ padding: "14px 18px", borderBottom: `1px solid ${c.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 700, fontSize: 16 }}>Switch Model</span>
-              <button onClick={() => setShowModelPicker(false)} style={{ background: "none", border: "none", color: c.textDim, cursor: "pointer" }}><Icon name="x" size={18} /></button>
+      {/* ── NL CONSOLE TAB ── */}
+      {tab === "nl" && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "12px 20px 8px", flexShrink: 0 }}>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono", marginBottom: 10 }}>
+              Type anything naturally — the mesh routes it to the right service.
             </div>
-            <div style={{ padding: "12px 16px" }}>
-              {downloaded.map(m => (
-                <div key={m.id} onClick={() => { setSelectedModel(m); setShowModelPicker(false); showToast(`Switched to ${m.name}`); }}
-                  style={{ background: m.id === selectedModel.id ? "#10a37f11" : c.card, border: `1px solid ${m.id === selectedModel.id ? "#10a37f44" : c.border2}`, borderRadius: 14, padding: 14, marginBottom: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "all 0.15s" }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 10, background: "#10a37f1a", border: "1px solid #10a37f33", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="cpu" size={18} color={c.green} /></div>
-                  <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: 14 }}>{m.name}</div><div style={{ fontSize: 11, color: c.textDim }}>{m.params} · {m.quant} · {m.speed}</div></div>
-                  {m.id === selectedModel.id && <Icon name="check" size={18} color={c.green} />}
-                </div>
+            {/* Quick examples */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {["Schedule a meet with Ravi tomorrow 3pm", "Remind me meds at 9pm", "MANAPPURAM price?", "Any recruiter mails?"].map(ex => (
+                <button key={ex} onClick={() => setNlInput(ex)} style={{
+                  fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textMuted,
+                  background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+                  borderRadius: 6, padding: "4px 8px",
+                }}>{ex}</button>
               ))}
-              <button onClick={() => { setShowModelPicker(false); setTab("models"); }} style={{ width: "100%", background: c.card, border: `1px solid ${c.border2}`, borderRadius: 12, padding: "12px", color: c.green, fontWeight: 700, cursor: "pointer", fontSize: 14 }}>+ Browse All Models</button>
+            </div>
+          </div>
+
+          {/* Log */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "0 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {nlLog.map(log => (
+              <div key={log.id} className="fade-in" style={{
+                background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+                borderRadius: 10, padding: "12px 14px",
+                borderLeft: `3px solid ${statusColor[log.status] || COLORS.accent}`,
+              }}>
+                <div style={{ fontSize: 13, marginBottom: 6 }}>
+                  <span style={{ color: COLORS.textMuted, fontFamily: "JetBrains Mono", fontSize: 10 }}>YOU → </span>
+                  {log.input}
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <StatusDot status={log.status === "active" ? "running" : log.status === "done" ? "active" : "idle"} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: statusColor[log.status] || COLORS.accent }}>
+                      {log.action}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <Tag color={COLORS.purple}>{log.service}</Tag>
+                    <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textDim }}>{log.ts}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Input */}
+          <div style={{ padding: "12px 20px", borderTop: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+            <div style={{
+              display: "flex", gap: 8, background: COLORS.surfaceAlt,
+              border: `1px solid ${COLORS.borderBright}`, borderRadius: 12, padding: "8px 12px",
+            }}>
+              <input
+                value={nlInput}
+                onChange={e => setNlInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && runNL()}
+                placeholder="Schedule a meet / Send mail / Set alarm / Get stock price…"
+                style={{
+                  flex: 1, background: "transparent", border: "none", outline: "none",
+                  color: COLORS.text, fontSize: 13,
+                }}
+              />
+              <button onClick={runNL} disabled={!nlInput.trim() || nlLoading} style={{
+                width: 32, height: 32, borderRadius: 8, border: "none",
+                background: nlInput.trim() && !nlLoading ? COLORS.accent : COLORS.border,
+                color: nlInput.trim() && !nlLoading ? COLORS.bg : COLORS.textMuted,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 14, flexShrink: 0, transition: "all 0.2s",
+              }}>
+                {nlLoading ? <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span> : "→"}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Messages */}
-      <div style={{ flex: 1, overflow: "auto", padding: "12px 0" }}>
-        <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}`}</style>
-        {activeConv?.messages.length === 0 && (
-          <div style={{ padding: "40px 24px", textAlign: "center" }}>
-            <div style={{ width: 60, height: 60, borderRadius: "50%", background: c.accent, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="bot" size={26} color="#fff" /></div>
-            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 6 }}>How can I help?</div>
-            <div style={{ color: c.textDim, fontSize: 13 }}>{selectedModel.name} · On-device</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 20 }}>
-              {["Explain BULK COLLECT", "Translate to Tamil", "Review my code", "Stock analysis"].map(s => (
-                <button key={s} onClick={() => { setInput(s); inputRef.current?.focus(); }}
-                  style={{ background: c.card, border: `1px solid ${c.border2}`, borderRadius: 20, padding: "8px 14px", color: c.text, cursor: "pointer", fontSize: 12 }}>{s}</button>
-              ))}
-            </div>
-          </div>
-        )}
-        {activeConv?.messages.map(msg => (
-          <div key={msg.id} style={{ display: "flex", gap: 10, padding: "6px 14px", flexDirection: msg.role === "user" ? "row-reverse" : "row", animation: "fadeUp 0.25s ease" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: msg.role === "user" ? c.purple : c.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0 }}>{msg.role === "user" ? "S" : "AI"}</div>
-            <div style={{ maxWidth: "80%" }}>
-              <div style={{ padding: "10px 14px", borderRadius: msg.role === "user" ? "16px 16px 3px 16px" : "16px 16px 16px 3px", background: msg.role === "user" ? "linear-gradient(135deg,#667eea,#764ba2)" : c.card, color: msg.role === "user" ? "#fff" : c.text, fontSize: 14, border: msg.role === "user" ? "none" : `1px solid ${c.border}`, boxShadow: msg.role === "user" ? "0 4px 12px rgba(102,126,234,0.3)" : "0 2px 8px rgba(0,0,0,0.3)" }}>
-                {msg.streaming && msg.id === streamingId
-                  ? <StreamingText text={msg.content} onDone={() => setStreamingId(null)} />
-                  : <div>{renderMarkdown(msg.content)}</div>}
-              </div>
-              {msg.role === "assistant" && msg.id !== streamingId && (
-                <div style={{ display: "flex", gap: 10, marginTop: 5, paddingLeft: 4 }}>
-                  {[["copy", "Copy"], ["refresh", "Retry"]].map(([ic, lb]) => (
-                    <button key={ic} onClick={() => ic === "copy" && showToast("Copied!")} style={{ background: "none", border: "none", color: c.textDim, cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 3 }}>
-                      <Icon name={ic} size={11} />{lb}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-        {isTyping && (
-          <div style={{ display: "flex", gap: 10, padding: "6px 14px" }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: c.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#fff", flexShrink: 0 }}>AI</div>
-            <div style={{ padding: "10px 14px", borderRadius: "16px 16px 16px 3px", background: c.card, border: `1px solid ${c.border}` }}><TypingIndicator /></div>
-          </div>
-        )}
-        <div ref={chatEndRef} />
-      </div>
-
-      {/* Input */}
-      <div style={{ padding: "10px 14px 6px", background: c.surface, borderTop: `1px solid ${c.border}`, flexShrink: 0 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", background: c.card, borderRadius: 16, padding: "8px 8px 8px 14px", border: `1px solid ${c.border2}` }}>
-          <textarea ref={inputRef} value={input} onChange={e => { setInput(e.target.value); e.target.style.height = "22px"; e.target.style.height = Math.min(e.target.scrollHeight, 110) + "px"; }}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-            placeholder="Message LocalMind AI…" rows={1}
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: c.textBright, fontSize: 14, resize: "none", lineHeight: 1.5, maxHeight: 110, minHeight: 22, fontFamily: "inherit" }} />
-          <button onClick={sendMessage} disabled={!input.trim() || isTyping}
-            style={{ width: 36, height: 36, borderRadius: 10, border: "none", cursor: input.trim() && !isTyping ? "pointer" : "default", background: input.trim() && !isTyping ? c.accent : c.border2, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s", flexShrink: 0 }}>
-            <Icon name="send" size={15} color="#fff" />
-          </button>
-        </div>
-        <div style={{ textAlign: "center", fontSize: 10, color: c.textDim, marginTop: 6 }}>🔒 100% on-device · {selectedModel.speed} · SQLite memory</div>
-      </div>
-    </>
-  );
-
-  const ModelsScreen = () => (
-    <div style={{ flex: 1, overflow: "auto" }}>
-      <div style={{ padding: "14px 16px 10px", borderBottom: `1px solid ${c.border}` }}>
-        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 12 }}>Model Library</div>
-        <div style={{ display: "flex", gap: 8, background: c.card, borderRadius: 12, padding: "8px 12px", marginBottom: 10, alignItems: "center", border: `1px solid ${c.border}` }}>
-          <Icon name="search" size={15} color={c.textDim} />
-          <input value={modelSearch} onChange={e => setModelSearch(e.target.value)} placeholder="Search models…"
-            style={{ background: "none", border: "none", outline: "none", color: c.textBright, fontSize: 14, flex: 1, fontFamily: "inherit" }} />
-        </div>
-        <div style={{ display: "flex", gap: 7, overflow: "auto", paddingBottom: 2 }}>
-          {["all", "downloaded", "general", "coding", "fast", "reasoning", "multilingual"].map(f => (
-            <button key={f} onClick={() => setModelFilter(f)}
-              style={{ fontSize: 11, padding: "4px 12px", borderRadius: 20, border: `1px solid ${modelFilter === f ? c.green : c.border2}`, color: modelFilter === f ? c.green : c.textDim, cursor: "pointer", background: modelFilter === f ? "#10a37f11" : "transparent", transition: "all 0.15s", whiteSpace: "nowrap", flexShrink: 0 }}>
-              {f === "all" ? "All" : f === "downloaded" ? "✓ Downloaded" : f.charAt(0).toUpperCase() + f.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div style={{ padding: "10px 14px" }}>
-        <div style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 14, padding: 14, marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span style={{ fontSize: 12, color: c.textDim }}>Storage Used</span><span style={{ fontSize: 12, fontWeight: 600, color: c.green }}>11.0 GB / 128 GB</span></div>
-          <div style={{ height: 5, background: c.card, borderRadius: 4, overflow: "hidden" }}><div style={{ height: "100%", width: "8.6%", background: c.accent, borderRadius: 4 }} /></div>
-          <div style={{ fontSize: 11, color: c.textDim, marginTop: 5 }}>{downloaded.length} downloaded · {MODELS_LIBRARY.length - downloaded.length} available</div>
-        </div>
-        {filteredModels.map(model => (
-          <div key={model.id} style={{ background: c.surface, border: `1px solid ${c.border}`, borderRadius: 16, padding: 14, marginBottom: 10 }}>
-            <div style={{ display: "flex", gap: 12 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 12, background: model.status === "downloaded" ? "#10a37f1a" : c.card, border: `1px solid ${model.status === "downloaded" ? "#10a37f44" : c.border2}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Icon name="cpu" size={19} color={model.status === "downloaded" ? c.green : c.textDim} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700, fontSize: 14 }}>{model.name}</span>
-                  {model.status === "downloaded" && <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 20, background: "#10a37f22", color: c.green, border: "1px solid #10a37f44" }}>✓ Local</span>}
-                  {selectedModel.id === model.id && <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 20, background: "#0ea5e922", color: c.blue, border: "1px solid #0ea5e944" }}>Active</span>}
-                </div>
-                <div style={{ fontSize: 11, color: c.textDim, marginTop: 2 }}>{model.family} · {model.params} · {model.quant}</div>
-                <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
-                  {model.tags.map(t => <span key={t} style={{ fontSize: 10, background: c.card, border: `1px solid ${c.border2}`, borderRadius: 20, padding: "1px 7px", color: c.textMid }}>{t}</span>)}
-                </div>
-                <div style={{ fontSize: 12, color: c.textMid, marginTop: 7, lineHeight: 1.5 }}>{model.description}</div>
-                <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
-                  {[["📦", model.size], ["⚡", model.speed], ["📝", model.ctx], ["⭐", model.rating]].map(([ic, val]) => (
-                    <span key={ic} style={{ fontSize: 11, color: c.textDim }}>{ic} {val}</span>
-                  ))}
-                </div>
-                {downloading[model.id]
-                  ? <DownloadProgress model={model} onComplete={() => { setModels(p => p.map(m => m.id === model.id ? { ...m, status: "downloaded" } : m)); setDownloading(d => { const n = { ...d }; delete n[model.id]; return n; }); showToast(`${model.name} ready!`); }} />
-                  : (
-                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                      {model.status === "downloaded" ? (
-                        <>
-                          <button onClick={() => { if (selectedModel.id !== model.id) { setSelectedModel(model); showToast(`Switched to ${model.name}`); setTab("chat"); } }}
-                            style={{ flex: 1, background: selectedModel.id === model.id ? c.card : c.accent, border: "none", borderRadius: 10, padding: "8px 0", color: "#fff", fontWeight: 700, cursor: selectedModel.id === model.id ? "default" : "pointer", fontSize: 12 }}>
-                            {selectedModel.id === model.id ? "✓ Active" : "Use Model"}
-                          </button>
-                          <button onClick={() => { setModels(p => p.map(m => m.id === model.id ? { ...m, status: "available" } : m)); if (selectedModel.id === model.id) setSelectedModel(downloaded.find(m => m.id !== model.id) || MODELS_LIBRARY[0]); showToast("Removed", "error"); }}
-                            style={{ background: c.card, border: `1px solid ${c.border2}`, borderRadius: 10, padding: "8px 12px", color: "#ef4444", cursor: "pointer" }}>
-                            <Icon name="trash" size={13} />
-                          </button>
-                        </>
-                      ) : (
-                        <button onClick={() => setDownloading(d => ({ ...d, [model.id]: true }))}
-                          style={{ flex: 1, background: c.card, border: `1px solid #10a37f44`, borderRadius: 10, padding: "8px 0", color: c.green, fontWeight: 700, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                          <Icon name="download" size={13} /> Download {model.size}
-                        </button>
-                      )}
-                    </div>
-                  )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const AgentWizard = () => (
-    <div style={{ position: "absolute", inset: 0, background: c.bg, zIndex: 300, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "14px 16px", borderBottom: `1px solid ${c.border}`, display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={() => { setShowWizard(false); setWizardStep(0); }} style={{ background: "none", border: "none", color: c.textDim, cursor: "pointer" }}><Icon name="x" size={20} /></button>
-        <span style={{ fontWeight: 700, fontSize: 16 }}>Create Agent</span>
-        <span style={{ marginLeft: "auto", fontSize: 12, color: c.textDim }}>{wizardStep + 1} / {WIZARD_STEPS.length}</span>
-      </div>
-      {/* Step dots */}
-      <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 4 }}>
-        {WIZARD_STEPS.map((_, i) => (
-          <div key={i} style={{ flex: 1, height: 3, borderRadius: 3, background: i <= wizardStep ? c.green : c.border2, transition: "background 0.3s" }} />
-        ))}
-      </div>
-      <div style={{ flex: 1, overflow: "auto", padding: "0 16px 16px" }}>
-        <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 14 }}>{WIZARD_STEPS[wizardStep]}</div>
-        {wizardStep === 0 && (
-          <div>
-            <label style={{ fontSize: 12, color: c.textDim, display: "block", marginBottom: 6 }}>Agent Name *</label>
-            <input value={newAgent.name} onChange={e => setNewAgent(a => ({ ...a, name: e.target.value }))} placeholder="e.g. Daily Stock Briefer"
-              style={{ width: "100%", background: c.card, border: `1px solid ${c.border2}`, borderRadius: 10, padding: "10px 14px", color: c.textBright, fontSize: 14, outline: "none", fontFamily: "inherit", marginBottom: 16, boxSizing: "border-box" }} />
-            <label style={{ fontSize: 12, color: c.textDim, display: "block", marginBottom: 6 }}>Description</label>
-            <textarea value={newAgent.description} onChange={e => setNewAgent(a => ({ ...a, description: e.target.value }))} placeholder="What does this agent do?"
-              style={{ width: "100%", background: c.card, border: `1px solid ${c.border2}`, borderRadius: 10, padding: "10px 14px", color: c.textBright, fontSize: 14, outline: "none", fontFamily: "inherit", resize: "none", height: 80, marginBottom: 16, boxSizing: "border-box" }} />
-            <label style={{ fontSize: 12, color: c.textDim, display: "block", marginBottom: 8 }}>Icon</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {["🤖", "🔍", "📊", "✈️", "🌐", "📝", "⚡", "🎯", "🔔", "📈", "🧠", "🔧"].map(em => (
-                <button key={em} onClick={() => setNewAgent(a => ({ ...a, icon: em }))}
-                  style={{ fontSize: 20, background: newAgent.icon === em ? "#10a37f22" : c.card, border: `2px solid ${newAgent.icon === em ? c.green : c.border2}`, borderRadius: 10, width: 44, height: 44, cursor: "pointer" }}>{em}</button>
-              ))}
-            </div>
-          </div>
-        )}
-        {wizardStep === 1 && (
-          <div>
-            <div style={{ fontSize: 13, color: c.textDim, marginBottom: 12 }}>Select the local model this agent uses for inference.</div>
-            {downloaded.map(m => (
-              <div key={m.id} onClick={() => setNewAgent(a => ({ ...a, model: m.id }))}
-                style={{ background: newAgent.model === m.id ? "#10a37f11" : c.card, border: `1px solid ${newAgent.model === m.id ? "#10a37f44" : c.border2}`, borderRadius: 14, padding: 14, marginBottom: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "all 0.15s" }}>
-                <Icon name="cpu" size={18} color={newAgent.model === m.id ? c.green : c.textDim} />
-                <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: 14 }}>{m.name}</div><div style={{ fontSize: 11, color: c.textDim }}>{m.params} · {m.speed} · {m.ctx} context</div></div>
-                {newAgent.model === m.id && <Icon name="check" size={18} color={c.green} />}
-              </div>
-            ))}
-          </div>
-        )}
-        {wizardStep === 2 && (
-          <div>
-            <div style={{ fontSize: 13, color: c.textDim, marginBottom: 12 }}>Define the agent's role and behavior instructions.</div>
-            <textarea placeholder="You are a helpful assistant that specializes in..."
-              style={{ width: "100%", background: c.card, border: `1px solid ${c.border2}`, borderRadius: 10, padding: "12px 14px", color: c.textBright, fontSize: 13, outline: "none", fontFamily: "inherit", resize: "none", height: 160, boxSizing: "border-box", lineHeight: 1.6 }} />
-            <div style={{ marginTop: 12, fontSize: 11, color: c.textDim, marginBottom: 8 }}>Quick templates:</div>
-            {["Summarize the input in 3 bullet points.", "Translate input text to Tamil.", "Review code and suggest improvements."].map(t => (
-              <button key={t} style={{ display: "block", width: "100%", textAlign: "left", background: c.card, border: `1px solid ${c.border2}`, borderRadius: 8, padding: "8px 12px", color: c.textMid, fontSize: 12, cursor: "pointer", marginBottom: 6 }}>{t}</button>
-            ))}
-          </div>
-        )}
-        {wizardStep === 3 && (
-          <div>
-            <div style={{ fontSize: 13, color: c.textDim, marginBottom: 12 }}>Choose tools this agent can use.</div>
-            {[["http_get", "HTTP GET", "Fetch data from APIs or URLs"], ["http_post", "HTTP POST", "Send data to APIs or webhooks"], ["clipboard_write", "Clipboard", "Write output to clipboard"], ["notification", "Notifications", "Send push notifications"], ["calendar_read", "Calendar", "Read calendar events"], ["file_write", "File Write", "Save output to a file"], ["send_intent", "App Intent", "Interact with other apps"]].map(([id, name, desc]) => (
-              <div key={id} onClick={() => setNewAgent(a => ({ ...a, tools: a.tools.includes(id) ? a.tools.filter(t => t !== id) : [...a.tools, id] }))}
-                style={{ background: c.surface, border: `1px solid ${newAgent.tools.includes(id) ? "#10a37f44" : c.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 34, height: 34, borderRadius: 9, background: newAgent.tools.includes(id) ? "#10a37f22" : c.card, border: `1px solid ${newAgent.tools.includes(id) ? "#10a37f44" : c.border2}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon name="zap" size={15} color={newAgent.tools.includes(id) ? c.green : c.textDim} />
-                </div>
-                <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: 13 }}>{name}</div><div style={{ fontSize: 11, color: c.textDim }}>{desc}</div></div>
-                <div style={{ width: 20, height: 20, borderRadius: 5, background: newAgent.tools.includes(id) ? c.green : c.card, border: `2px solid ${newAgent.tools.includes(id) ? c.green : c.border2}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {newAgent.tools.includes(id) && <Icon name="check" size={11} color="#fff" />}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {wizardStep === 4 && (
-          <div>
-            <div style={{ fontSize: 13, color: c.textDim, marginBottom: 12 }}>When should this agent activate?</div>
-            {[["on-demand", "On Demand", "Tap Run to execute manually"], ["share", "Share Sheet", "Activates when content is shared to it"], ["schedule", "Schedule (Cron)", "Runs automatically on a time schedule"], ["lan", "LAN REST Endpoint", "Exposed as HTTP API on local network"]].map(([val, label, desc]) => (
-              <div key={val} onClick={() => setNewAgent(a => ({ ...a, trigger: val }))}
-                style={{ background: newAgent.trigger === val ? "#10a37f0d" : c.surface, border: `1px solid ${newAgent.trigger === val ? "#10a37f44" : c.border}`, borderRadius: 12, padding: "14px", marginBottom: 10, cursor: "pointer", display: "flex", gap: 12, transition: "all 0.15s" }}>
-                <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${newAgent.trigger === val ? c.green : c.border2}`, background: newAgent.trigger === val ? c.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", marginTop: 2, flexShrink: 0 }}>
-                  {newAgent.trigger === val && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff" }} />}
-                </div>
-                <div><div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div><div style={{ fontSize: 12, color: c.textDim, marginTop: 2 }}>{desc}</div></div>
-              </div>
-            ))}
-          </div>
-        )}
-        {wizardStep === 5 && (
-          <div>
-            <div style={{ background: "#10a37f0d", border: "1px solid #10a37f33", borderRadius: 14, padding: 16, marginBottom: 14 }}>
-              <div style={{ fontSize: 28, marginBottom: 8 }}>{newAgent.icon}</div>
-              <div style={{ fontWeight: 700, fontSize: 17 }}>{newAgent.name || "Unnamed Agent"}</div>
-              <div style={{ fontSize: 13, color: c.textDim, marginTop: 4 }}>{newAgent.description || "No description set"}</div>
-            </div>
-            {[["Model", downloaded.find(m => m.id === newAgent.model)?.name || "—"], ["Trigger", newAgent.trigger], ["Tools", newAgent.tools.length > 0 ? newAgent.tools.join(", ") : "None selected"]].map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: `1px solid ${c.border}`, fontSize: 13 }}>
-                <span style={{ color: c.textDim }}>{k}</span><span style={{ fontWeight: 500, maxWidth: "60%", textAlign: "right" }}>{v}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div style={{ padding: 14, borderTop: `1px solid ${c.border}`, display: "flex", gap: 10 }}>
-        {wizardStep > 0 && <button onClick={() => setWizardStep(s => s - 1)} style={{ flex: 1, background: c.card, border: `1px solid ${c.border2}`, borderRadius: 12, padding: "12px 0", color: c.text, fontWeight: 600, cursor: "pointer", fontSize: 14 }}>Back</button>}
-        <button onClick={() => {
-          if (wizardStep < WIZARD_STEPS.length - 1) { setWizardStep(s => s + 1); }
-          else {
-            const agent = { id: `a${Date.now()}`, name: newAgent.name || "New Agent", description: newAgent.description || "", icon: newAgent.icon, color: "#10a37f", status: "idle", model: downloaded.find(m => m.id === newAgent.model)?.name || "—", trigger: newAgent.trigger, tools: newAgent.tools, lastRun: "Never", runs: 0 };
-            setAgents(p => [...p, agent]);
-            setShowWizard(false); setWizardStep(0);
-            setNewAgent({ name: "", description: "", icon: "🤖", model: "llama3-8b-q4", trigger: "on-demand", tools: [] });
-            showToast(`Agent "${agent.name}" created!`);
-          }
-        }} style={{ flex: 2, background: c.accent, border: "none", borderRadius: 12, padding: "12px 0", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>
-          {wizardStep < WIZARD_STEPS.length - 1 ? "Continue →" : "✓ Create Agent"}
-        </button>
-      </div>
-    </div>
-  );
-
-  const AgentsScreen = () => (
-    <div style={{ flex: 1, overflow: "auto", position: "relative" }}>
-      {showWizard && <AgentWizard />}
-      <div style={{ padding: "14px 16px 10px", borderBottom: `1px solid ${c.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontWeight: 700, fontSize: 18 }}>Agents</div>
-        <button onClick={() => { setShowWizard(true); setWizardStep(0); }}
-          style={{ background: c.accent, border: "none", borderRadius: 20, padding: "7px 14px", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
-          <Icon name="plus" size={14} /> New Agent
-        </button>
-      </div>
-      <div style={{ padding: "12px 14px" }}>
-        {agents.length === 0 && (
-          <div style={{ textAlign: "center", padding: "40px 0", color: c.textDim }}>
-            <div style={{ fontSize: 44, marginBottom: 12 }}>🤖</div>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>No agents yet</div>
-            <div style={{ fontSize: 13 }}>Tap New Agent to create one</div>
-          </div>
-        )}
-        {agents.map(agent => (
-          <div key={agent.id} style={{ background: c.surface, border: `1px solid ${c.border}`, borderRadius: 16, padding: 14, marginBottom: 12 }}>
-            <div style={{ display: "flex", gap: 12 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: agent.color + "22", border: `1px solid ${agent.color}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{agent.icon}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700, fontSize: 14 }}>{agent.name}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: agent.status === "active" ? "#10a37f22" : "#30363d", color: agent.status === "active" ? c.green : c.textDim, border: `1px solid ${agent.status === "active" ? "#10a37f44" : c.border2}` }}>
-                    {agent.status === "active" ? "● Active" : "○ Idle"}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: c.textDim, marginTop: 3 }}>{agent.model} · {agent.trigger}</div>
-                <div style={{ fontSize: 12, color: c.textMid, marginTop: 6, lineHeight: 1.5 }}>{agent.description}</div>
-                {agent.tools?.length > 0 && (
-                  <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
-                    {agent.tools.map(t => <span key={t} style={{ fontSize: 10, background: c.card, border: `1px solid ${c.border2}`, borderRadius: 20, padding: "2px 7px", color: c.textMid }}>{t}</span>)}
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  <button onClick={() => {
-                    setAgents(p => p.map(a => a.id === agent.id ? { ...a, status: "active", lastRun: "Just now", runs: a.runs + 1 } : a));
-                    showToast(`${agent.name} running…`);
-                    setTimeout(() => setAgents(p => p.map(a => a.id === agent.id ? { ...a, status: "idle" } : a)), 3000);
-                  }} style={{ flex: 1, background: c.accent, border: "none", borderRadius: 10, padding: "9px 0", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>▶ Run Now</button>
-                  <button style={{ background: c.card, border: `1px solid ${c.border2}`, borderRadius: 10, padding: "9px 12px", color: c.textDim, cursor: "pointer" }}><Icon name="edit" size={13} /></button>
-                  <button onClick={() => { setAgents(p => p.filter(a => a.id !== agent.id)); showToast("Agent deleted", "error"); }}
-                    style={{ background: c.card, border: `1px solid ${c.border2}`, borderRadius: 10, padding: "9px 12px", color: "#ef4444", cursor: "pointer" }}><Icon name="trash" size={13} /></button>
-                </div>
-                <div style={{ fontSize: 11, color: c.textDim, marginTop: 8 }}>Last run: {agent.lastRun} · {agent.runs} total runs</div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const Toggle = ({ defaultOn = false }) => {
-    const [on, setOn] = useState(defaultOn);
-    return (
-      <div onClick={() => setOn(v => !v)} style={{ width: 44, height: 24, borderRadius: 12, background: on ? c.green : c.border2, cursor: "pointer", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
-        <div style={{ position: "absolute", top: 2, left: on ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.3)" }} />
-      </div>
-    );
-  };
-
-  const runTest = (id) => {
-    setTestResults(p => ({ ...p, [id]: "running" }));
-    setTimeout(() => setTestResults(p => ({ ...p, [id]: "passed" })), 1200 + Math.random() * 1200);
-  };
-
-  const SettingsScreen = () => {
-    const allPassed = Object.values(testResults).filter(v => v === "passed").length === 6;
-    return (
-      <div style={{ flex: 1, overflow: "auto" }}>
-        <div style={{ padding: "14px 16px 10px", borderBottom: `1px solid ${c.border}` }}>
-          <div style={{ fontWeight: 700, fontSize: 18 }}>Settings & Testing</div>
-        </div>
-        <div style={{ padding: "12px 14px" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: c.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Active Model</div>
-          <div style={{ background: c.surface, border: `1px solid ${c.border}`, borderRadius: 14, padding: 14, marginBottom: 16 }}>
-            {[["Name", selectedModel.name], ["Params", selectedModel.params], ["Quant", selectedModel.quant], ["Speed", selectedModel.speed], ["Context", selectedModel.ctx], ["Storage", "SQLite / Room DB"], ["Privacy", "100% On-device"]].map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${c.border}`, fontSize: 13 }}>
-                <span style={{ color: c.textDim }}>{k}</span><span style={{ fontWeight: 600, color: c.green }}>{v}</span>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ fontSize: 10, fontWeight: 700, color: c.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>E2E Test Suite</div>
-          {[["chat", "Chat & Streaming", "Message send, token streaming, history"], ["models", "Model Manager", "Download flow, model switching, storage"], ["agents", "Agent System", "Create, run, output delivery"], ["db", "SQLite Memory", "Room DB read/write, indexing"], ["integration", "App Integration", "Intent dispatch, clipboard, HTTP tools"], ["privacy", "Privacy Audit", "Zero network calls during inference"]].map(([id, label, desc]) => {
-            const status = testResults[id];
-            return (
-              <div key={id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: status === "passed" ? "#10a37f0d" : status === "running" ? "#f59e0b0d" : c.surface, borderRadius: 10, marginBottom: 8, border: `1px solid ${status === "passed" ? "#10a37f33" : status === "running" ? "#f59e0b33" : c.border}`, transition: "all 0.3s" }}>
+      {/* ── DEVICES TAB ── */}
+      {tab === "devices" && (
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+          {DEVICES.map(dev => (
+            <div key={dev.id} style={{
+              background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+              borderRadius: 12, padding: "16px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <span style={{ fontSize: 26 }}>{dev.icon}</span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{label}</div>
-                  <div style={{ fontSize: 11, color: c.textDim, marginTop: 2 }}>{desc}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontWeight: 700 }}>{dev.name}</span>
+                    <StatusDot status={dev.status} />
+                  </div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono" }}>{dev.type}</div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {status === "running" && <div style={{ width: 15, height: 15, border: "2px solid #f59e0b", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />}
-                  {status === "passed" && <div style={{ width: 20, height: 20, borderRadius: "50%", background: c.green, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="check" size={10} color="#fff" /></div>}
-                  <button onClick={() => runTest(id)} style={{ background: status === "passed" ? c.card : c.accent, border: "none", borderRadius: 8, padding: "5px 12px", color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: 11 }}>
-                    {status === "passed" ? "Re-run" : "Run"}
-                  </button>
+                <div style={{ textAlign: "right" }}>
+                  <Tag color={dev.sync === "live" ? COLORS.green : COLORS.amber}>{dev.sync}</Tag>
+                  <div style={{ fontSize: 10, color: COLORS.textDim, fontFamily: "JetBrains Mono", marginTop: 3 }}>{dev.role}</div>
                 </div>
               </div>
-            );
-          })}
-          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-          <button onClick={() => { ["chat", "models", "agents", "db", "integration", "privacy"].forEach((id, i) => setTimeout(() => runTest(id), i * 350)); showToast("Running all tests…"); }}
-            style={{ width: "100%", background: c.accent, border: "none", borderRadius: 12, padding: "13px 0", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14, marginTop: 4 }}>
-            ▶ Run All Tests
-          </button>
-          {allPassed && (
-            <div style={{ background: "#10a37f0d", border: "1px solid #10a37f33", borderRadius: 12, padding: 16, marginTop: 12, textAlign: "center" }}>
-              <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
-              <div style={{ fontWeight: 700, color: c.green }}>All tests passed!</div>
-              <div style={{ fontSize: 12, color: c.textDim, marginTop: 4 }}>LocalMind AI is fully operational</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textMuted, marginBottom: 4 }}>
+                    <span>CPU</span><span style={{ color: dev.cpu > 60 ? COLORS.amber : COLORS.accent }}>{dev.cpu}%</span>
+                  </div>
+                  <MiniBar val={dev.cpu} color={dev.cpu > 60 ? COLORS.amber : COLORS.accent} />
+                </div>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textMuted, marginBottom: 4 }}>
+                    <span>RAM</span><span style={{ color: dev.ram > 65 ? COLORS.red : COLORS.green }}>{dev.ram}%</span>
+                  </div>
+                  <MiniBar val={dev.ram} color={dev.ram > 65 ? COLORS.red : COLORS.green} />
+                </div>
+              </div>
             </div>
-          )}
-
-          <div style={{ fontSize: 10, fontWeight: 700, color: c.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10, marginTop: 20 }}>Preferences</div>
-          <div style={{ background: c.surface, border: `1px solid ${c.border}`, borderRadius: 14, padding: "0 14px", marginBottom: 16 }}>
-            {[["GPU Acceleration", true], ["Developer Mode", false], ["LAN Endpoint", false], ["Auto-update models", false]].map(([label, def]) => (
-              <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${c.border}` }}>
-                <span style={{ fontSize: 13 }}>{label}</span>
-                <Toggle defaultOn={def} />
-              </div>
-            ))}
-          </div>
-
-          <div style={{ fontSize: 10, fontWeight: 700, color: c.textDim, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>About</div>
-          <div style={{ background: c.surface, border: `1px solid ${c.border}`, borderRadius: 14, padding: 14 }}>
-            {[["App", "LocalMind AI"], ["Version", "1.0.0"], ["Build", "2026.04"], ["Engine", "llama.cpp (JNI)"], ["Developer", "Suresh Kumar T"]].map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${c.border}`, fontSize: 13 }}>
-                <span style={{ color: c.textDim }}>{k}</span><span style={{ fontWeight: 500 }}>{v}</span>
-              </div>
-            ))}
+          ))}
+          <div style={{ background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 10, color: COLORS.textMuted, letterSpacing: "0.1em" }}>MESH TOPOLOGY</div>
+            <div style={{ fontFamily: "JetBrains Mono", fontSize: 11, color: COLORS.textMuted, lineHeight: 2 }}>
+              <span style={{ color: COLORS.accent }}>Android</span> ─── <span style={{ color: COLORS.green }}>VPS</span> ─── <span style={{ color: COLORS.purple }}>ThinkPad</span><br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└──── <span style={{ color: COLORS.amber }}>Pi Zero 2W</span>
+            </div>
+            <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+              <Tag color={COLORS.green}>AES-256</Tag>
+              <Tag color={COLORS.accent}>WebSocket</Tag>
+              <Tag color={COLORS.purple}>Auto-Discover</Tag>
+            </div>
           </div>
         </div>
-      </div>
-    );
-  };
+      )}
+    </div>
+  );
+};
+
+// ─── MODELS VIEW ─────────────────────────────────────────────────────────────
+
+const BROWSE_CATALOG = [
+  // HuggingFace / Ollama library
+  { id: "b1", name: "Llama 3.2 3B", family: "Llama", source: "HuggingFace", format: "GGUF", size: "2.0GB", ram: "3GB", quant: "Q4_K_M", license: "Meta", tags: ["general", "chat"], pi: false },
+  { id: "b2", name: "SmolLM2 360M", family: "SmolLM", source: "HuggingFace", format: "GGUF", size: "220MB", ram: "512MB", quant: "Q4_K_M", license: "Apache 2.0", tags: ["tiny", "pi-zero"], pi: true },
+  { id: "b3", name: "SmolLM2 1.7B", family: "SmolLM", source: "HuggingFace", format: "GGUF", size: "1.1GB", ram: "2GB", quant: "Q4_K_M", license: "Apache 2.0", tags: ["tiny", "chat"], pi: false },
+  { id: "b4", name: "Gemma 2 2B", family: "Gemma", source: "Ollama", format: "GGUF", size: "1.6GB", ram: "3GB", quant: "Q4_K_S", license: "Gemma", tags: ["general", "google"], pi: false },
+  { id: "b5", name: "Phi-3.5 Mini", family: "Phi", source: "Ollama", format: "GGUF", size: "2.2GB", ram: "4GB", quant: "Q4_K_M", license: "MIT", tags: ["reasoning", "microsoft"], pi: false },
+  { id: "b6", name: "Qwen2.5 0.5B", family: "Qwen", source: "HuggingFace", format: "GGUF", size: "390MB", ram: "768MB", quant: "Q4_K_M", license: "Apache 2.0", tags: ["tiny", "multilingual", "pi-zero"], pi: true },
+  { id: "b7", name: "Qwen2.5 1.5B", family: "Qwen", source: "HuggingFace", format: "GGUF", size: "940MB", ram: "1.5GB", quant: "Q4_K_M", license: "Apache 2.0", tags: ["small", "multilingual"], pi: false },
+  { id: "b8", name: "TinyLlama 1.1B", family: "Llama", source: "HuggingFace", format: "GGUF", size: "670MB", ram: "1GB", quant: "Q4_K_M", license: "Apache 2.0", tags: ["tiny", "fast"], pi: true },
+  { id: "b9", name: "Mistral 7B", family: "Mistral", source: "Ollama", format: "GGUF", size: "4.1GB", ram: "8GB", quant: "Q4_K_M", license: "Apache 2.0", tags: ["general", "coding"], pi: false },
+  { id: "b10", name: "DeepSeek-R1 1.5B", family: "DeepSeek", source: "HuggingFace", format: "GGUF", size: "1.0GB", ram: "2GB", quant: "Q4_K_M", license: "MIT", tags: ["reasoning", "r1"], pi: false },
+  { id: "b11", name: "Phi-4 Mini", family: "Phi", source: "Ollama", format: "GGUF", size: "2.5GB", ram: "4GB", quant: "Q4_K_M", license: "MIT", tags: ["reasoning", "microsoft"], pi: false },
+  { id: "b12", name: "Gemma 3 1B", family: "Gemma", source: "HuggingFace", format: "GGUF", size: "700MB", ram: "1.5GB", quant: "Q4_K_M", license: "Gemma", tags: ["small", "google"], pi: true },
+];
+
+const FAMILIES = ["All", "Llama", "Gemma", "Phi", "Qwen", "SmolLM", "Mistral", "DeepSeek"];
+const SOURCES = ["All", "HuggingFace", "Ollama"];
+
+const ModelsView = () => {
+  const [tab, setTab] = useState("installed"); // installed | browse
+  const [search, setSearch] = useState("");
+  const [family, setFamily] = useState("All");
+  const [source, setSource] = useState("All");
+  const [piOnly, setPiOnly] = useState(false);
+  const [downloading] = useState({});
+
+  const filtered = BROWSE_CATALOG.filter(m => {
+    const matchSearch = m.name.toLowerCase().includes(search.toLowerCase()) || m.family.toLowerCase().includes(search.toLowerCase()) || m.tags.some(t => t.includes(search.toLowerCase()));
+    const matchFamily = family === "All" || m.family === family;
+    const matchSource = source === "All" || m.source === source;
+    const matchPi = !piOnly || m.pi;
+    return matchSearch && matchFamily && matchSource && matchPi;
+  });
+
+const sourceColor = { HuggingFace: "#FF9D00", Ollama: COLORS.accent };
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: c.bg, color: c.text, fontFamily: "'DM Sans', system-ui, sans-serif", overflow: "hidden", maxWidth: 430, margin: "0 auto", position: "relative", boxShadow: "0 0 60px rgba(0,0,0,0.8)" }}>
-
-      {/* Screen */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
-        {tab === "chat" && <ChatScreen />}
-        {tab === "models" && <ModelsScreen />}
-        {tab === "agents" && <AgentsScreen />}
-        {tab === "settings" && <SettingsScreen />}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>Model Marketplace</div>
+        <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono" }}>
+          OpenRouter · llama.cpp · Ollama · HuggingFace
+        </div>
       </div>
 
-      {/* Bottom Nav */}
-      <div style={{ display: "flex", background: c.surface, borderTop: `1px solid ${c.border}`, flexShrink: 0 }}>
-        {[["chat", "chat", "Chat"], ["cpu", "models", "Models"], ["bot", "agents", "Agents"], ["settings", "settings", "Settings"]].map(([icon, id, label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0 8px", gap: 3, cursor: "pointer", background: "none", border: "none", color: tab === id ? c.green : c.textDim, transition: "color 0.2s", position: "relative" }}>
-            <Icon name={icon} size={21} color={tab === id ? c.green : c.textDim} />
-            <span style={{ fontSize: 10, fontWeight: tab === id ? 700 : 400 }}>{label}</span>
-            {tab === id && <div style={{ width: 4, height: 4, borderRadius: "50%", background: c.green, position: "absolute", bottom: 3 }} />}
-          </button>
+      {/* Tabs */}
+      <div style={{ display: "flex", borderBottom: `1px solid ${COLORS.border}`, flexShrink: 0 }}>
+        {[["installed", "Installed"], ["browse", "Browse Library"]].map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} style={{
+            flex: 1, padding: "10px", fontSize: 12, fontWeight: 600, border: "none",
+            background: tab === id ? `${COLORS.accent}12` : "transparent",
+            color: tab === id ? COLORS.accent : COLORS.textMuted,
+            borderBottom: tab === id ? `2px solid ${COLORS.accent}` : "2px solid transparent",
+            transition: "all 0.2s",
+          }}>{label}</button>
         ))}
       </div>
 
-      {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+      {/* ── INSTALLED TAB ── */}
+      {tab === "installed" && (
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: COLORS.textMuted, letterSpacing: "0.1em", marginBottom: 2 }}>☁ CLOUD (via OpenRouter)</div>
+          {MODELS.filter(m => m.type === "cloud").map(model => (
+            <div key={model.id} style={{
+              background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+              borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12,
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>{model.name}</span>
+                  <StatusDot status={model.status} />
+                </div>
+                <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono", marginTop: 3 }}>{model.provider}</div>
+              </div>
+              <Tag color={COLORS.accent}>{model.latency}</Tag>
+              <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.amber }}>{model.cost}</span>
+            </div>
+          ))}
+
+          <div style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: COLORS.textMuted, letterSpacing: "0.1em", marginTop: 8, marginBottom: 2 }}>⬡ LOCAL (on-device)</div>
+          {MODELS.filter(m => m.type === "local").map(model => (
+            <div key={model.id} style={{
+              background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+              borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12,
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>{model.name}</span>
+                  <StatusDot status={model.status} />
+                </div>
+                <div style={{ fontSize: 11, color: COLORS.textMuted, fontFamily: "JetBrains Mono", marginTop: 3 }}>{model.provider} · {model.size}</div>
+              </div>
+              <Tag color={COLORS.green}>{model.latency}</Tag>
+              {model.status === "idle" && (
+                <button style={{
+                  fontSize: 11, fontFamily: "JetBrains Mono", color: COLORS.accent,
+                  background: `${COLORS.accent}15`, border: `1px solid ${COLORS.accent}40`,
+                  borderRadius: 6, padding: "4px 10px",
+                }}>Load</button>
+              )}
+              <button style={{
+                fontSize: 11, fontFamily: "JetBrains Mono", color: COLORS.red,
+                background: `${COLORS.red}10`, border: `1px solid ${COLORS.red}30`,
+                borderRadius: 6, padding: "4px 8px",
+              }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── BROWSE TAB ── */}
+      {tab === "browse" && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* Filters */}
+          <div style={{ padding: "12px 20px", borderBottom: `1px solid ${COLORS.border}`, flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search models… (name, family, tag)"
+              style={{
+                background: COLORS.surfaceAlt, border: `1px solid ${COLORS.borderBright}`,
+                borderRadius: 8, padding: "7px 12px", color: COLORS.text, outline: "none", fontSize: 12, width: "100%",
+              }}
+            />
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {/* Family filter */}
+              <select value={family} onChange={e => setFamily(e.target.value)} style={{
+                background: COLORS.surfaceAlt, color: COLORS.text, border: `1px solid ${COLORS.border}`,
+                borderRadius: 6, padding: "4px 8px", fontSize: 11, fontFamily: "JetBrains Mono",
+              }}>
+                {FAMILIES.map(f => <option key={f}>{f}</option>)}
+              </select>
+              {/* Source filter */}
+              <select value={source} onChange={e => setSource(e.target.value)} style={{
+                background: COLORS.surfaceAlt, color: COLORS.text, border: `1px solid ${COLORS.border}`,
+                borderRadius: 6, padding: "4px 8px", fontSize: 11, fontFamily: "JetBrains Mono",
+              }}>
+                {SOURCES.map(s => <option key={s}>{s}</option>)}
+              </select>
+              {/* Pi filter */}
+              <button onClick={() => setPiOnly(p => !p)} style={{
+                fontSize: 11, fontFamily: "JetBrains Mono",
+                color: piOnly ? COLORS.amber : COLORS.textMuted,
+                background: piOnly ? `${COLORS.amber}15` : COLORS.surfaceAlt,
+                border: `1px solid ${piOnly ? COLORS.amber + "50" : COLORS.border}`,
+                borderRadius: 6, padding: "4px 10px",
+              }}>🍓 Pi Zero</button>
+              <span style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textDim, marginLeft: "auto" }}>
+                {filtered.length} model{filtered.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+          </div>
+
+          {/* Model list */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {filtered.map(model => {
+              return (
+                <div key={model.id} className="fade-in" style={{
+                  background: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}`,
+                  borderRadius: 10, padding: "12px 14px",
+                }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>{model.name}</span>
+                        {model.pi && <Tag color={COLORS.amber}>🍓 Pi Zero</Tag>}
+                      </div>
+                      <div style={{ fontSize: 10, fontFamily: "JetBrains Mono", color: COLORS.textMuted, marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <span style={{ color: sourceColor[model.source] || COLORS.textMuted }}>{model.source}</span>
+                        <span>{model.format} · {model.quant}</span>
+                        <span>{model.size}</span>
+                        <span>RAM: {model.ram}</span>
+                        <span style={{ color: COLORS.textDim }}>{model.license}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                        {model.tags.map(t => <Tag key={t} color={COLORS.textDim}>{t}</Tag>)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filtered.length === 0 && (
+              <div style={{ textAlign: "center", color: COLORS.textDim, fontSize: 13, fontFamily: "JetBrains Mono", padding: "40px 0" }}>
+                No models match your filters
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
+  );
+};
+
+// ─── MAIN APP ────────────────────────────────────────────────────────────────
+
+export default function App() {
+  const [nav, setNav] = useState("chat");
+
+  const VIEWS = {
+    chat: ChatView,
+    memory: MemoryView,
+    agents: AgentsView,
+    tasks: TasksView,
+    devices: ServiceMeshView,
+    models: ModelsView,
+  };
+
+  const View = VIEWS[nav] || ChatView;
+
+  return (
+    <>
+      <style>{css}</style>
+
+      {/* Scanline effect */}
+      <div style={{
+        position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999,
+        background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)",
+      }} />
+
+      <div style={{ display: "flex", height: "100vh", width: "100vw", overflow: "hidden" }}>
+        <SideNav active={nav} onNav={setNav} />
+
+        {/* Main panel */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: COLORS.bg }}>
+          {/* Top bar */}
+          <div style={{
+            height: 36, borderBottom: `1px solid ${COLORS.border}`,
+            display: "flex", alignItems: "center", paddingInline: 16, gap: 8,
+            flexShrink: 0, background: COLORS.surface,
+          }}>
+            <div style={{ display: "flex", gap: 5 }}>
+              {[COLORS.red, COLORS.amber, COLORS.green].map((c, i) => (
+                <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: c, opacity: 0.7 }} />
+              ))}
+            </div>
+            <div style={{ flex: 1 }} />
+            <div style={{ fontFamily: "JetBrains Mono", fontSize: 10, color: COLORS.textDim }}>
+              Personal AI OS · v1.0 · ts@TCS
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <StatusDot status="active" />
+              <span style={{ fontFamily: "JetBrains Mono", fontSize: 10, color: COLORS.green }}>sys online</span>
+            </div>
+          </div>
+
+          {/* View */}
+          <div style={{ flex: 1, overflow: "hidden" }}>
+            <View />
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

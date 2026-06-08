@@ -30,4 +30,4 @@ npm run dev
 - SQLite / Room DB for memory
 
 ## Developer
-Suresh Kumar T — TCS Chennai
+Suresh

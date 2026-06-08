@@ -30,7 +30,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit
 
       - name: Build React app
         run: npm run build
@@ -53,13 +53,44 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Build Debug APK
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build Debug APK (with retry)
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          for attempt in 1 2 3; do
+            echo "Build attempt $attempt/3..."
+            if ./gradlew assembleDebug --no-daemon --stacktrace; then
+              echo "Build successful!"
+              exit 0
+            else
+              if [ $attempt -lt 3 ]; then
+                echo "Build failed, retrying..."
+                rm -rf ~/.gradle/wrapper/dists
+                sleep 10
+              fi
+            fi
+          done
+          exit 1
 
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: PersonalAI-OS-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+
+      - name: Build Status
+        if: success()
+        run: |
+          echo "✓ Personal AI OS APK built successfully!"
+          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
